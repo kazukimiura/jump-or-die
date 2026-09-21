@@ -62,6 +62,30 @@ export default function GameClient() {
 
     initRender()
 
+    /*
+     * プレイ領域をブラウザの **トップレイヤー** へ載せる（GDD §12-5 / 検査 C-1）。
+     *
+     * AdSense のアンカー広告は z-index 2147483647 で挿入されるため、CSS の z-index を
+     * 最大値まで上げても「同値なら後から挿入された側が上」になり、覆える保証が無い。
+     * `popover="manual"` の要素はトップレイヤーに載り、**z-index と DOM 順の外側**で
+     * 常に最前面になるので、挿入順に依存せず確実に覆える。
+     *
+     * - 広告要素は削除も非表示もしない（AdSense ポリシー順守）。覆うだけ
+     * - `manual` は Esc・領域外タップで閉じない。離脱導線の Esc と競合しない
+     * - 非対応ブラウザでは属性を付けず、CSS の z-index にフォールバックする
+     *   （`[popover]:not(:popover-open)` の UA 既定で消えるのを避けるため、
+     *     showPopover に成功したときだけ属性を残す）
+     */
+    const root = canvas.parentElement
+    if (root && typeof (root as HTMLElement).showPopover === 'function') {
+      try {
+        root.setAttribute('popover', 'manual')
+        ;(root as HTMLElement).showPopover()
+      } catch {
+        root.removeAttribute('popover')
+      }
+    }
+
     const off = createOffscreen()
     const offCtx = off.getContext('2d')
     if (!offCtx) return

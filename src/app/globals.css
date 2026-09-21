@@ -34,7 +34,13 @@ body {
 .jd-root {
   position: fixed;
   inset: 0;
-  z-index: 2147483000;
+  /*
+   * 32bit 符号付き整数の最大値。AdSense のアンカー広告は 2147483647 で挿入されるため、
+   * これ未満だと**構造的に覆えない**（検査 C-1）。
+   * ただし同値の場合は後から DOM に挿入された側が上に来るので、これだけでは保証にならない。
+   * 保証は GameClient 側の **トップレイヤー昇格**（popover="manual"）が担う。
+   */
+  z-index: 2147483647;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -54,4 +60,35 @@ body {
   image-rendering: -webkit-optimize-contrast;
   image-rendering: pixelated;
   touch-action: none;
+}
+
+/*
+ * トップレイヤー昇格時の UA 既定スタイルを打ち消す。
+ *
+ * `popover="manual"` の要素はブラウザの **トップレイヤー** に載り、
+ * z-index の値や DOM の挿入順に関係なく、常にすべての要素より上に描かれる。
+ * これが GDD §12-5 の「物理的に覆う」を満たす唯一の確実な手段である。
+ * 対応していないブラウザでは属性を付けないので、この規則は効かず
+ * 上の `z-index: 2147483647` にフォールバックする。
+ *
+ * `manual` を選んでいるのは、Esc キーや領域外タップで**閉じない**ため。
+ * `auto` や `<dialog showModal()>` だと Esc で消え、離脱導線の Esc とも衝突する。
+ */
+.jd-root:popover-open {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--gb1);
+}
+
+/* トップレイヤーの背後も同じレターボックス色で塗る（枠飾りは付けない） */
+.jd-root::backdrop {
+  background: var(--gb1);
 }

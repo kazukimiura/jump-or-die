@@ -49,7 +49,12 @@ import type {
   RenderState,
 } from '@/lib/render/renderState'
 // 離脱導線のしきい値は描画層に一元化されている（透B・改訂R9）。二重管理しない
-import { exitPromptPhaseOf, exitTapRegion, isExitTapAccepted } from '@/lib/render/draw'
+import {
+  exitPromptPhaseOf,
+  exitTapRegion,
+  isExitTapAccepted,
+  selectBackTapRegion,
+} from '@/lib/render/draw'
 import {
   MERCY_DEATHS,
   MARKS_KEEP,
@@ -185,8 +190,6 @@ const HIT_TITLE_STAGES: HitRect = { x: 258, y: 148, w: 62, h: 16 }
 const HIT_TITLE_SFX: HitRect = { x: 0, y: 164, w: 72, h: 16 }
 /** TITLE の `FLASH` トグル */
 const HIT_TITLE_FLASH: HitRect = { x: 240, y: 164, w: 80, h: 16 }
-/** SELECT の戻り矢印（描画は 8,8） */
-const HIT_SELECT_BACK: HitRect = { x: 0, y: 0, w: 48, h: 28 }
 /** SELECT の枠（draw.ts の CARD_X / CARD_Y / CARD_W / CARD_H と一致させる） */
 const HIT_SELECT_CARDS: readonly HitRect[] = [
   { x: 16, y: 56, w: 88, h: 72 },
@@ -382,7 +385,8 @@ function dispatchTap(app: App, x: number, y: number): void {
       return
 
     case 'SELECT': {
-      if (isBack || inRect(HIT_SELECT_BACK, x, y)) {
+      // 戻り導線 `TITLE` の判定矩形は描画層が持つ（透B M-2）。数値をこちら側に書かない
+      if (isBack || inRect(selectBackTapRegion(app.viewScale), x, y)) {
         app.phase = 'TITLE'
         return
       }
@@ -490,11 +494,21 @@ function enterDeath(app: App): void {
   const rec = stageRecord(app.save, app.stage.id)
   const reachPct = progressRatio(app.stage, app.sim.stageFrame) * 100
   const bestBefore = rec.best
-  const newBest = reachPct > bestBefore
+  /*
+   * 記録の更新と「NEW BEST」の名乗りを分ける。
+   *
+   * 新規セーブでは bestBefore = 0 なので、初回死亡は必ず「更新」になる。
+   * だが **超えた相手が存在しない**ので `NEW BEST` と言えば嘘になる（検査 M-1）。
+   * 副作用として `こえた。` が固定発火し、初回専用の D-35 `はじめの 1ぽ。` が
+   * 新規プレイヤーに構造的に一度も出なくなっていた。
+   * 記録（rec.best）は初回から更新し、名乗りだけ 2 回目以降に限る。
+   */
+  const improved = reachPct > bestBefore
+  const newBest = improved && bestBefore > 0
 
   rec.try = app.attempts
   rec.die += 1
-  if (newBest) rec.best = reachPct
+  if (improved) rec.best = reachPct
   rec.marks = [reachPct, ...rec.marks].slice(0, MARKS_KEEP)
 
   app.save.total.die += 1
@@ -546,12 +560,20 @@ function enterResult(app: App): void {
   const rec = stageRecord(app.save, app.stage.id)
   const timeMs = Math.max(0, app.deps.now() - app.runStartMs)
   const firstClear = !rec.clear
-  const newRecord = rec.time == null || timeMs < rec.time
+  /*
+   * M-1 と同型の誤発火を潰す。
+   * 初クリアは rec.time が null なので、素直に書くと必ず `NEW RECORD` になる。
+   * 縮めた相手が存在しないので嘘であり、かつ同じ画面に既に `FIRST CLEAR` と
+   * `ついに。` がある（UIテキスト §12-2「1つの画面で感情に触れるのは1回まで」）。
+   * ベストタイムは初回から保存し、名乗りだけ 2 回目以降に限る。
+   */
+  const improvedTime = rec.time == null || timeMs < rec.time
+  const newRecord = rec.time != null && timeMs < rec.time
 
   rec.try = app.attempts
   rec.clear = true
   rec.best = 100
-  if (newRecord) rec.time = timeMs
+  if (improvedTime) rec.time = timeMs
   app.save.total.playMs += timeMs
   app.consecutiveDeaths = 0
 
