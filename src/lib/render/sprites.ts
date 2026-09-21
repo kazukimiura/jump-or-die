@@ -5,6 +5,8 @@
  *
  * 絶対制約:
  *   - **外部画像ファイル（PNG 等）を使わない。** 起動時に 1 度だけ canvas へ bake する
+ *   - アトラスは 2 枚: `ATLAS_MAIN`（通常）と `ATLAS_HOLLOW`（中抜き反転・改訂 R3）。
+ *     プレイ中のピクセル操作はしない。`drawImage` の差し替えだけで死因表示を切り替える
  *   - 記号: `.` = 透明 / `1` = GB1 / `2` = GB2 / `3` = GB3 / `4` = GB4
  *   - 行数・各行の文字数は宣言寸法と必ず一致する（`assertSprites()` で検証）
  *   - 飛行体の 2 コマは判定域 x2–9 / y2–9 の画素が 1px も違わない（`assertSprites()` で検証）
@@ -13,7 +15,7 @@
  * React に依存しない純粋な TypeScript モジュール。
  */
 
-import { PALETTE, PALETTE_INV } from './palette'
+import { PALETTE } from './palette'
 import { createCanvas } from './scale'
 
 export type DotRows = readonly string[]
@@ -539,7 +541,36 @@ const ATLAS_W = 256
 
 const rects = new Map<SpriteName, SpriteRect>()
 let atlasMain: HTMLCanvasElement | null = null
-let atlasInv: HTMLCanvasElement | null = null
+let atlasHollow: HTMLCanvasElement | null = null
+
+/**
+ * 中抜き反転（スタイルガイド §5-3 改訂 R3 / 2026-09-21）。
+ *
+ * 非透明画素のうち **上下左右 4 近傍がすべて非透明** の画素を GB4 に置換し、
+ * それ以外（＝外周 1px）を GB1 に置換する。透明はそのまま。
+ * 旧仕様の単純階調反転（GB1 → GB4）は、反転先が空と同色で対象が消えるため廃止。
+ * 中抜きなら輪郭（GB1 × GB4 ＝ 15.9:1）が一瞬も消えない。
+ */
+export function hollowRows(rows: DotRows): DotRows {
+  const w = rows[0].length
+  const h = rows.length
+  const solid = (x: number, y: number): boolean =>
+    x >= 0 && y >= 0 && x < w && y < h && rows[y][x] !== '.'
+  const out: string[] = []
+  for (let y = 0; y < h; y++) {
+    let line = ''
+    for (let x = 0; x < w; x++) {
+      if (!solid(x, y)) {
+        line += '.'
+        continue
+      }
+      const inner = solid(x - 1, y) && solid(x + 1, y) && solid(x, y - 1) && solid(x, y + 1)
+      line += inner ? '4' : '1'
+    }
+    out.push(line)
+  }
+  return out
+}
 
 /** シェルフ法で配置座標を決める。bake の前に 1 度だけ走る */
 function layout(): number {
@@ -567,19 +598,19 @@ function layout(): number {
   return cy + shelfH + 1
 }
 
-function bake(palette: readonly [string, string, string, string], h: number): HTMLCanvasElement {
+function bake(h: number, transform?: (rows: DotRows) => DotRows): HTMLCanvasElement {
   const cv = createCanvas(ATLAS_W, h)
   const g = cv.getContext('2d')
   if (!g) throw new Error('2d context unavailable')
   g.imageSmoothingEnabled = false
   for (const [name, rect] of rects) {
-    const rows = SPRITES[name]
+    const rows = transform ? transform(SPRITES[name]) : SPRITES[name]
     for (let y = 0; y < rows.length; y++) {
       const row = rows[y]
       for (let x = 0; x < row.length; x++) {
         const ch = row.charCodeAt(x) - 48 // '1'..'4' → 1..4、'.' は負値
         if (ch < 1 || ch > 4) continue
-        g.fillStyle = palette[ch - 1]
+        g.fillStyle = PALETTE[ch - 1]
         g.fillRect(rect.x + x, rect.y + y, 1, 1)
       }
     }
@@ -588,19 +619,19 @@ function bake(palette: readonly [string, string, string, string], h: number): HT
 }
 
 /**
- * 起動時に 1 度だけ呼ぶ。2 枚のアトラス（通常・階調反転）を焼く。
+ * 起動時に 1 度だけ呼ぶ。2 枚のアトラス（通常・中抜き反転）を焼く。
  * **プレイ中に再実行してはならない。**
  */
 export function initSprites(): void {
   if (atlasMain) return
   const h = layout()
-  atlasMain = bake(PALETTE, h)
-  atlasInv = bake(PALETTE_INV, h)
+  atlasMain = bake(h)
+  atlasHollow = bake(h, hollowRows)
 }
 
-export function getAtlas(inverted = false): HTMLCanvasElement {
-  if (!atlasMain || !atlasInv) initSprites()
-  return (inverted ? atlasInv : atlasMain) as HTMLCanvasElement
+export function getAtlas(hollow = false): HTMLCanvasElement {
+  if (!atlasMain || !atlasHollow) initSprites()
+  return (hollow ? atlasHollow : atlasMain) as HTMLCanvasElement
 }
 
 export function spriteRect(name: SpriteName): SpriteRect {
@@ -616,10 +647,10 @@ export function drawSprite(
   name: SpriteName,
   x: number,
   y: number,
-  inverted = false,
+  hollow = false,
 ): void {
   const r = spriteRect(name)
-  ctx.drawImage(getAtlas(inverted), r.x, r.y, r.w, r.h, Math.round(x), Math.round(y), r.w, r.h)
+  ctx.drawImage(getAtlas(hollow), r.x, r.y, r.w, r.h, Math.round(x), Math.round(y), r.w, r.h)
 }
 
 /** スプライトの一部だけを切り出して描く（幅可変の反復・スライス用） */
@@ -632,12 +663,12 @@ export function drawSpritePart(
   sh: number,
   dx: number,
   dy: number,
-  inverted = false,
+  hollow = false,
 ): void {
   if (sw <= 0 || sh <= 0) return
   const r = spriteRect(name)
   ctx.drawImage(
-    getAtlas(inverted),
+    getAtlas(hollow),
     r.x + sx,
     r.y + sy,
     sw,

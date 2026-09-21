@@ -151,13 +151,13 @@ export function drawGround(
  * ========================================================================== */
 
 /** OB-01 ブロック小 12×16。上面 1px の GB3 が「乗れる」の記号 */
-export function drawBlockS(ctx: CanvasRenderingContext2D, x: number, y: number, inv = false): void {
-  drawSprite(ctx, 'BLOCK_S', x, y, inv)
+export function drawBlockS(ctx: CanvasRenderingContext2D, x: number, y: number, hollow = false): void {
+  drawSprite(ctx, 'BLOCK_S', x, y, hollow)
 }
 
 /** OB-02 ブロック大 24×32。OB-01 と意図的に同じ見た目 */
-export function drawBlockL(ctx: CanvasRenderingContext2D, x: number, y: number, inv = false): void {
-  drawSprite(ctx, 'BLOCK_L', x, y, inv)
+export function drawBlockL(ctx: CanvasRenderingContext2D, x: number, y: number, hollow = false): void {
+  drawSprite(ctx, 'BLOCK_L', x, y, hollow)
 }
 
 /**
@@ -175,13 +175,13 @@ export function drawCeiling(
   y: number,
   w: number,
   h: number,
-  inv = false,
+  hollow = false,
 ): void {
   for (let dy = 0; dy < h; dy += 16) {
     const sh = Math.min(16, h - dy)
     for (let dx = 0; dx < w; dx += 16) {
       const sw = Math.min(16, w - dx)
-      drawSpritePart(ctx, 'CEILING', 0, 0, sw, sh, x + dx, y + dy, inv)
+      drawSpritePart(ctx, 'CEILING', 0, 0, sw, sh, x + dx, y + dy, hollow)
     }
   }
 }
@@ -192,22 +192,22 @@ export function drawPlatform(
   x: number,
   y: number,
   w: number,
-  inv = false,
+  hollow = false,
 ): void {
   const edge = 8
   if (w <= edge * 2) {
-    drawSpritePart(ctx, 'PLATFORM', 0, 0, w, 8, x, y, inv)
+    drawSpritePart(ctx, 'PLATFORM', 0, 0, w, 8, x, y, hollow)
     return
   }
-  drawSpritePart(ctx, 'PLATFORM', 0, 0, edge, 8, x, y, inv)
+  drawSpritePart(ctx, 'PLATFORM', 0, 0, edge, 8, x, y, hollow)
   let dx = edge
   const midW = w - edge * 2
   while (dx < edge + midW) {
     const sw = Math.min(16, edge + midW - dx)
-    drawSpritePart(ctx, 'PLATFORM', 8, 0, sw, 8, x + dx, y, inv)
+    drawSpritePart(ctx, 'PLATFORM', 8, 0, sw, 8, x + dx, y, hollow)
     dx += sw
   }
-  drawSpritePart(ctx, 'PLATFORM', 32 - edge, 0, edge, 8, x + w - edge, y, inv)
+  drawSpritePart(ctx, 'PLATFORM', 32 - edge, 0, edge, 8, x + w - edge, y, hollow)
 }
 
 /** OB-06 トゲ。8×8 を隙間なく並べ、束として 1 つの障害物に見せる */
@@ -216,16 +216,16 @@ export function drawSpike(
   x: number,
   y: number,
   w: number,
-  inv = false,
+  hollow = false,
 ): void {
   for (let dx = 0; dx < w; dx += 8) {
-    drawSpritePart(ctx, 'SPIKE', 0, 0, Math.min(8, w - dx), 8, x + dx, y, inv)
+    drawSpritePart(ctx, 'SPIKE', 0, 0, Math.min(8, w - dx), 8, x + dx, y, hollow)
   }
 }
 
 /** OB-07 昇降ブロック 16×16。見た目は OB-01 と同じ。動いていること自体が識別情報 */
-export function drawLifter(ctx: CanvasRenderingContext2D, x: number, y: number, inv = false): void {
-  drawSprite(ctx, 'LIFTER', x, y, inv)
+export function drawLifter(ctx: CanvasRenderingContext2D, x: number, y: number, hollow = false): void {
+  drawSprite(ctx, 'LIFTER', x, y, hollow)
 }
 
 /**
@@ -237,11 +237,11 @@ export function drawFlyer(
   x: number,
   y: number,
   stageFrame: number,
-  inv = false,
+  hollow = false,
   frameOverride?: number,
 ): void {
   const f = frameOverride ?? Math.floor(stageFrame / 6) % 2
-  drawSprite(ctx, f === 0 ? 'FLYER_A' : 'FLYER_B', x, y, inv)
+  drawSprite(ctx, f === 0 ? 'FLYER_A' : 'FLYER_B', x, y, hollow)
 }
 
 /** OB-09 崩落床 24×8・3 コマ（無傷 / ひび1 / ひび3）。ひびは GB4 で「空が透けて見える」 */
@@ -251,11 +251,11 @@ export function drawCrumble(
   y: number,
   w: number,
   frame: number,
-  inv = false,
+  hollow = false,
 ): void {
   const name: SpriteName = frame >= 2 ? 'CRUMBLE_2' : frame === 1 ? 'CRUMBLE_1' : 'CRUMBLE_0'
   for (let dx = 0; dx < w; dx += 24) {
-    drawSpritePart(ctx, name, 0, 0, Math.min(24, w - dx), 8, x + dx, y, inv)
+    drawSpritePart(ctx, name, 0, 0, Math.min(24, w - dx), 8, x + dx, y, hollow)
   }
 }
 
@@ -265,25 +265,27 @@ export function drawSpring(
   x: number,
   bottomY: number,
   frame: number,
-  inv = false,
+  hollow = false,
 ): void {
   const name: SpriteName = frame === 1 ? 'SPRING_B' : 'SPRING_A'
   const h = frame === 1 ? 16 : 8
-  drawSprite(ctx, name, x, bottomY - h, inv)
+  drawSprite(ctx, name, x, bottomY - h, hollow)
 }
 
-/** 殺した障害物 1 個だけを階調反転して点滅させるか（3f ON / 3f OFF・画面全体のフラッシュは禁止） */
-function killerInverted(s: RenderState, id: number): boolean {
+/**
+ * 殺した障害物 1 個だけを **中抜き反転** で描くか（スタイルガイド §5-3 改訂 R3）。
+ *
+ * - 通常: **3f 中抜き / 3f 通常** を 1 往復（計 6f ＝ 100ms）
+ * - `reducedFlash`: **同じ中抜きを点滅させず 6f 間そのまま静止表示**する。
+ *   差は「往復させるかどうか」だけで、アトラスも処理も本編と共有する
+ *
+ * 画面全体のフラッシュ・他の障害物への波及は禁止。
+ */
+function killerHollow(s: RenderState, id: number): boolean {
   const d = s.death
-  if (!d || d.killerId !== id || s.reducedFlash) return false
-  return d.frame < 6 && d.frame % 6 < 3
-}
-
-/** `reducedFlash` 時の代替表示: 殺した障害物の外周 1px を GB4 で縁取る静止表示（6f 間） */
-function killerOutlined(s: RenderState, id: number): boolean {
-  const d = s.death
-  if (!d || d.killerId !== id || !s.reducedFlash) return false
-  return d.frame < 6
+  if (!d || d.killerId !== id) return false
+  if (d.frame >= 6) return false
+  return s.reducedFlash ? true : d.frame % 6 < 3
 }
 
 /** 障害物 1 個を描く。画面外はカリングする */
@@ -296,46 +298,39 @@ export function drawObstacle(
   if (ob.hidden) return
   const x = ob.worldX - cam
   if (x + ob.w <= 0 || x >= LOGICAL_W) return
-  const inv = killerInverted(s, ob.id)
+  const hollow = killerHollow(s, ob.id)
 
   switch (ob.kind) {
     case 'BLOCK_S':
-      drawBlockS(ctx, x, ob.y, inv)
+      drawBlockS(ctx, x, ob.y, hollow)
       break
     case 'BLOCK_L':
-      drawBlockL(ctx, x, ob.y, inv)
+      drawBlockL(ctx, x, ob.y, hollow)
       break
     case 'PIT':
       drawPit()
       break
     case 'CEILING':
-      drawCeiling(ctx, x, ob.y, ob.w, ob.h, inv)
+      drawCeiling(ctx, x, ob.y, ob.w, ob.h, hollow)
       break
     case 'PLATFORM':
-      drawPlatform(ctx, x, ob.y, ob.w, inv)
+      drawPlatform(ctx, x, ob.y, ob.w, hollow)
       break
     case 'SPIKE':
-      drawSpike(ctx, x, ob.y, ob.w, inv)
+      drawSpike(ctx, x, ob.y, ob.w, hollow)
       break
     case 'LIFTER':
-      drawLifter(ctx, x, ob.y, inv)
+      drawLifter(ctx, x, ob.y, hollow)
       break
     case 'FLYER':
-      drawFlyer(ctx, x, ob.y, s.stageFrame, inv, ob.frame)
+      drawFlyer(ctx, x, ob.y, s.stageFrame, hollow, ob.frame)
       break
     case 'CRUMBLE':
-      drawCrumble(ctx, x, ob.y, ob.w, ob.frame ?? 0, inv)
+      drawCrumble(ctx, x, ob.y, ob.w, ob.frame ?? 0, hollow)
       break
     case 'SPRING':
-      drawSpring(ctx, x, ob.y + ob.h, ob.frame ?? 0, inv)
+      drawSpring(ctx, x, ob.y + ob.h, ob.frame ?? 0, hollow)
       break
-  }
-
-  if (killerOutlined(s, ob.id)) {
-    // 外周 1px を GB4 で縁取る。ただし **1px 内側に入れる**。
-    // 空も GB4 なので、外側や最外周に置くと背景に溶けて何も見えない。
-    // 1px 内側なら GB1 → GB4 → GB1 となり、15.9:1 の輪が黒の中に浮く。
-    strokeRect1(ctx, 4, x + 1, ob.y + 1, ob.w - 2, ob.h - 2)
   }
 }
 
@@ -593,48 +588,48 @@ const CARD_H = 72
 const CARD_Y = 56
 const CARD_X: readonly number[] = [16, 116, 216]
 
+/**
+ * ステージ枠 88×72。
+ *
+ * 未解放枠は「文字を暗くする」のではなく **「地を暗くする」**（スタイルガイド §6-2 改訂 R5）。
+ * 旧仕様の GB3 文字 × GB4 の空は 1.88:1 で §1-4 の禁止規定に抵触していた。
+ * 新仕様は枠内を GB2 のベタで塗り、番号と錠を GB3（3.01:1）で置く。
+ * **罫線は描かない**（ベタの外形が境界そのもの）。**ステージ名・到達率も出さない。**
+ */
 function drawSelectCard(
   ctx: CanvasRenderingContext2D,
   entry: RenderSelectEntry,
   x: number,
 ): void {
-  const locked = entry.state === 'LOCKED'
-  const frameTone: Tone = locked ? 3 : 2
-  strokeRect1(ctx, frameTone, x, CARD_Y, CARD_W, CARD_H)
-
   const cx = x + CARD_W / 2
-  drawText(ctx, pad2(entry.no), cx, 64, {
-    font: 'F5X7',
-    tone: locked ? 3 : 1,
-    scale: 2,
-    align: 'center',
+
+  if (entry.state === 'LOCKED') {
+    fillRect(ctx, 2, x, CARD_Y, CARD_W, CARD_H) // 地を GB2 のベタで塗る＝「入れない」の記号
+    drawText(ctx, pad2(entry.no), cx, 64, { font: 'F5X7', tone: 3, scale: 2, align: 'center' })
+    drawSprite(ctx, 'LOCK', cx - 4, 104) // SP-16 は GB3。必ず GB2 のベタ地の上に置く
+    return
+  }
+
+  strokeRect1(ctx, 2, x, CARD_Y, CARD_W, CARD_H)
+  drawText(ctx, pad2(entry.no), cx, 64, { font: 'F5X7', tone: 1, scale: 2, align: 'center' })
+
+  // ステージ名は最大 2 行。半角スペースで折る
+  const words = entry.name.split(' ')
+  const lines = words.length > 1 ? [words[0], words.slice(1).join(' ')] : [entry.name]
+  lines.forEach((line, i) => {
+    drawText(ctx, line, cx, 86 + i * 8, { font: 'F3X5', tone: 2, align: 'center' })
   })
 
-  if (!locked) {
-    // ステージ名は最大 2 行。半角スペースで折る
-    const words = entry.name.split(' ')
-    const lines = words.length > 1 ? [words[0], words.slice(1).join(' ')] : [entry.name]
-    lines.forEach((line, i) => {
-      drawText(ctx, line, cx, 86 + i * 8, { font: 'F3X5', tone: 2, align: 'center' })
-    })
-  }
+  // 未クリアは **完全な空欄**。輪郭だけの星（器）を置かない（UIテキスト 11-2・采配承認済み）
+  if (entry.state === 'CLEARED') drawSprite(ctx, 'STAR_FULL', cx - 4, 104)
 
-  if (locked) {
-    drawSprite(ctx, 'LOCK', cx - 4, 104)
-  } else if (entry.state === 'CLEARED') {
-    // 未クリアは **完全な空欄**。輪郭だけの星（器）を置かない（UIテキスト 11-2）
-    drawSprite(ctx, 'STAR_FULL', cx - 4, 104)
-  }
-
-  if (!locked) {
-    const record =
-      entry.state === 'CLEARED' && entry.bestTimeMs != null
-        ? formatTime(entry.bestTimeMs)
-        : entry.bestPct != null
-          ? formatPct(entry.bestPct)
-          : '--'
-    drawText(ctx, record, x + CARD_W - 4, 118, { font: 'F3X5', tone: 2, align: 'right' })
-  }
+  const record =
+    entry.state === 'CLEARED' && entry.bestTimeMs != null
+      ? formatTime(entry.bestTimeMs)
+      : entry.bestPct != null
+        ? formatPct(entry.bestPct)
+        : '--'
+  drawText(ctx, record, x + CARD_W - 4, 118, { font: 'F3X5', tone: 2, align: 'right' })
 }
 
 export function drawSelectScreen(ctx: CanvasRenderingContext2D, s: RenderState): void {

@@ -30,7 +30,12 @@ export const PALETTE: readonly [string, string, string, string] = [GB1, GB2, GB3
 
 /**
  * 階調反転パレット（GB1 ↔ GB4 / GB2 ↔ GB3）。
- * 死亡演出で「殺した障害物 1 個だけ」を反転するために使う（スタイルガイド §5-3）。
+ *
+ * 【改訂 R3 / 2026-09-21】死亡演出の死因表示は **中抜き反転**（sprites.ts の `hollowRows`）に
+ * 変わったため、障害物の反転描画には**使わない**。単純階調反転は反転先が空と同色になり、
+ * 対象が消えてしまうためである（スタイルガイド §5-3）。
+ * 本パレットと `invertTone` は、RESULT の `NEW RECORD` の値反転のように
+ * **地と文字を入れ替える表現**のために残してある。
  */
 export const PALETTE_INV: readonly [string, string, string, string] = [GB4, GB3, GB2, GB1]
 
