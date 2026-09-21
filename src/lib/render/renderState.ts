@@ -30,6 +30,11 @@
  *  stage          ステージ情報（地面・谷・ステージ名）
  *  hud            HUD 帯の情報
  *  death          死亡演出の情報（死んでいなければ null）
+ *  exitPrompt     離脱導線 `← STAGES` の表示段階（省略可・既定 HIDDEN）。
+ *                 READY でアイドル 90f のときだけ `ST nn` と差し替えて出る。
+ *                 段階の求め方は描画層の `exitPromptPhaseOf(idleFrames)` を使うこと。
+ *                 タップ判定の矩形は `exitTapRegion(scale)`、受付可否は
+ *                 `isExitTapAccepted(phase)` で取れる（しきい値を二重に持たないため）
  *  readyMessage   READY フェーズに 1 行だけ出す死亡メッセージ（かな）。無ければ null
  *  readyUnlock    解放通知 2 行（['STAGE 04', 'UNLOCKED']）。無ければ null
  *  banner         `STAGE 1` / `GO!` / `PRACTICE` の一時表示。無ければ null
@@ -156,6 +161,30 @@ export interface RenderDeath {
   frame: number
 }
 
+/**
+ * 離脱導線 `← STAGES` の表示段階（スタイルガイド §6-3-1 / 改訂 R9）。
+ *
+ * `READY` でタップが 90f（1.5秒）無いときに、HUD 左端の `ST nn` と**差し替えて**出す。
+ * アイドルの計測はエンジン層の担当。描画層は「今どの段階か」を受け取って描くだけ。
+ * 段階の対応表（アイドル 90f 到達を +0f とする）:
+ *
+ * | 段階       | 経過      | 見え方              | タップ |
+ * |-----------|-----------|---------------------|--------|
+ * | `HIDDEN`  | –         | `ST nn` を出す      | 不可   |
+ * | `FADE_25` | +0 – +5f  | GB3・25% ディザ     | 不可   |
+ * | `FADE_50` | +6 – +11f | GB3・50% 市松ディザ | 不可   |
+ * | `SOLID`   | +12 – +17f| GB3 ベタ            | 不可   |
+ * | `ACTIVE`  | +18f 〜   | GB3 ベタ            | **可** |
+ *
+ * `SOLID` から `ACTIVE` までの 6f は、出現と同時に押してしまう事故を防ぐ意図的な猶予。
+ * **この 6f を詰めないこと。**
+ *
+ * 経過フレームから段階を求めるには描画層の `exitPromptPhaseOf(idleFrames)` を使える
+ * （しきい値を二重管理しないため、そちらを呼ぶことを推奨）。
+ * キャンセル時は**フェードアウトを作らず** `HIDDEN` に戻す（1 フレームで消える）。
+ */
+export type ExitPromptPhase = 'HIDDEN' | 'FADE_25' | 'FADE_50' | 'SOLID' | 'ACTIVE'
+
 /** 一時表示のバナー（`STAGE 1` → `GO!` → プレイ開始） */
 export interface RenderBanner {
   /** 英字大文字。`STAGE 1` / `GO!` / `PRACTICE` */
@@ -230,6 +259,11 @@ export interface RenderState {
   hud: RenderHud
 
   death: RenderDeath | null
+  /**
+   * 離脱導線 `← STAGES` の表示段階。**省略時は `HIDDEN`**。
+   * `READY` 以外のフェーズでは描画層が無条件に無視する（`RUNNING` 中は描かない絶対規定）。
+   */
+  exitPrompt?: ExitPromptPhase
   /** READY に 1 行だけ重ねる死亡メッセージ（かな・分かち書き） */
   readyMessage: string | null
   /** 解放通知 2 行 */

@@ -171,6 +171,9 @@ export const FONT_3X5: Record<string, readonly number[]> = {
   ',': [0, 0, 0, 0b010, 0b100],
   // `!` は英数字と同じ全高（`GO!` を小さく出す場合に要る）
   '!': [0b010, 0b010, 0b010, 0, 0b010],
+  // --- R9 離脱導線 `← STAGES` 用。全高・上下対称（指示書 §6-2 改訂 R9 の作図そのまま）---
+  // `ST nn` と同一書体・同一ベースラインで並ぶ必要があるため、スプライトにせずグリフで持つ
+  '←': [0b001, 0b010, 0b111, 0b010, 0b001],
 }
 
 /* ============================================================================
@@ -510,6 +513,78 @@ export function drawText(
   }
 }
 
+/* ============================================================================
+ * 固定文字列の焼き込み（ディザ付き）— 離脱導線 `← STAGES` 用（指示書 §6-5 / R9）
+ * ========================================================================== */
+
+/**
+ * ディザのタイルパターン（2×2）。**判定は論理座標（320×180 系）のパリティで行う。**
+ * グリフ内のローカル座標で取ってはならない。
+ * - `quarter25`  … `x % 2 === 0 && y % 2 === 0`（インク約 19%）
+ * - `checker50`  … `(x + y) % 2 === 0`（市松・インク約 43%）
+ * - `solid`      … 全画素
+ *
+ * **アルファブレンドは禁止**（4 階調の外の色を作るため）。ディザだけで濃度を刻む。
+ */
+export type DitherMode = 'quarter25' | 'checker50' | 'solid'
+
+function ditherPass(mode: DitherMode, x: number, y: number): boolean {
+  if (mode === 'solid') return true
+  if (mode === 'checker50') return (x + y) % 2 === 0
+  return x % 2 === 0 && y % 2 === 0
+}
+
+/**
+ * 固定文字列を 1 枚のオフスクリーンへ焼く。**起動時に 1 度だけ呼ぶこと。**
+ *
+ * `originX` / `originY` は**この文字列が画面上で描かれる論理座標**で、ディザのパリティ判定に
+ * 使う（描画位置が固定なのでパリティは定数になり、焼き込みが成立する）。
+ * 返る canvas は `measureText(text, font)` × グリフ高 の大きさで、`drawImage` 1 回で置ける。
+ */
+export function bakeTextTile(
+  text: string,
+  originX: number,
+  originY: number,
+  opts: { font: FontId; tone: Tone; dither?: DitherMode },
+): HTMLCanvasElement {
+  const { font, tone } = opts
+  const dither = opts.dither ?? 'solid'
+  const w = Math.max(1, measureText(text, font))
+  const h = font === 'F3X5' ? 5 : font === 'F5X7' ? 7 : 8
+  const cv = createCanvas(w, h)
+  const g = cv.getContext('2d')
+  if (!g) throw new Error('2d context unavailable')
+  g.imageSmoothingEnabled = false
+  g.fillStyle = PALETTE[tone - 1]
+
+  if (!sourceCache) sourceCache = glyphSource()
+  let cx = 0
+  for (const ch of text) {
+    const adv = advanceOf(font, ch)
+    if (ch !== ' ') {
+      const rows = sourceCache.get(glyphKey(font, ch))
+      if (!rows) {
+        warnOnce(`グリフがありません: "${ch}"（文脈 恵に差し戻すこと）`)
+      } else {
+        const dy = font === 'KANA' && isHalfWidth(ch) ? 2 : 0
+        for (let y = 0; y < rows.length; y++) {
+          const row = rows[y]
+          for (let x = 0; x < row.length; x++) {
+            if (row[x] === '.') continue
+            const lx = cx + x
+            const ly = dy + y
+            // パリティは論理座標で取る（グリフ内ローカル座標ではない）
+            if (!ditherPass(dither, originX + lx, originY + ly)) continue
+            g.fillRect(lx, ly, 1, 1)
+          }
+        }
+      }
+    }
+    cx += adv
+  }
+  return cv
+}
+
 /** 収録グリフ数の検査（3x5 = 39 / 5x7 = 43 / かな = 82。いずれも半角スペースを除く） */
 export function assertFonts(): string[] {
   const errors: string[] = []
@@ -517,7 +592,7 @@ export function assertFonts(): string[] {
   const count5 = Object.keys(FONT_5X7).length - 1
   const countK = Object.keys(FONT_KANA).length
   // 宣言は 39 / 43 / 82。実装では 3x5 に 2 字、かなに 5 字を増補している（冒頭の申し送り参照）
-  if (count3 !== 45) errors.push(`FONT_3x5 の収録字数が ${count3}（39 ＋ 増補 6 ＝ 45）`)
+  if (count3 !== 46) errors.push(`FONT_3x5 の収録字数が ${count3}（39 ＋ 増補 7 ＝ 46）`)
   if (count5 !== 46) errors.push(`FONT_5x7 の収録字数が ${count5}（43 ＋ 増補 3 ＝ 46）`)
   if (countK !== 87) errors.push(`FONT_KANA_8x8 の収録字数が ${countK}（82 ＋ 増補 5 ＝ 87）`)
   for (const [ch, mask] of Object.entries(FONT_3X5)) {

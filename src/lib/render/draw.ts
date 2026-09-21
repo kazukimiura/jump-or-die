@@ -17,7 +17,14 @@
  */
 
 import { PALETTE, TONE, type Tone } from './palette'
-import { drawText, measureText, initFont, assertFonts, type FontId } from './font'
+import {
+  drawText,
+  measureText,
+  initFont,
+  assertFonts,
+  bakeTextTile,
+  type FontId,
+} from './font'
 import {
   drawSprite,
   drawSpritePart,
@@ -27,6 +34,7 @@ import {
 } from './sprites'
 import { LOGICAL_H, LOGICAL_W, PLAYER_X } from './scale'
 import type {
+  ExitPromptPhase,
   RenderDeath,
   RenderObstacle,
   RenderSelectEntry,
@@ -44,6 +52,7 @@ import type {
 export function initRender(): void {
   initSprites()
   initFont()
+  initExitLabel()
   if (process.env.NODE_ENV !== 'production') {
     const errors = [...assertSprites(), ...assertFonts()]
     if (errors.length > 0) console.error('[render] 素材の検査に失敗:\n' + errors.join('\n'))
@@ -389,6 +398,103 @@ export function drawChunks(ctx: CanvasRenderingContext2D, s: RenderState): void 
  * HUD（y 0–11）
  * ========================================================================== */
 
+/* ----------------------------------------------------------------------------
+ * 離脱導線 `← STAGES`（アイドル顕在化・スタイルガイド §6-3-1 / 改訂 R9）
+ *
+ * 性質は「見つけてほしいが、目立ってはいけない」。
+ * `READY` でタップが 90f 無いときだけ、HUD 左端の `ST nn` と **差し替えて** 出す。
+ * **`RUNNING` 中は描画も判定も一切置かない（絶対規定）。**
+ * -------------------------------------------------------------------------- */
+
+/** ラベルの描画起点（`ST nn` と同一位置。重ねずに差し替える） */
+export const EXIT_LABEL_X = 4
+export const EXIT_LABEL_Y = 3
+/** 文言。`←` と `STAGES` の間は半角スペース 1 つ。**詰めないこと**（文脈 恵の指定） */
+export const EXIT_LABEL_TEXT = '← STAGES'
+/** 出現までのアイドル（1.5 秒） */
+export const EXIT_IDLE_FRAMES = 90
+/** 各段 6f。ベタ到達は +12f、タップ受付開始は +18f */
+export const EXIT_FADE_STEP = 6
+
+/** 淡 25% → 濃 50% 市松 → ベタ の 3 枚。起動時に 1 度だけ焼く */
+let exitLabel: HTMLCanvasElement[] | null = null
+
+function initExitLabel(): void {
+  if (exitLabel) return
+  exitLabel = [
+    bakeTextTile(EXIT_LABEL_TEXT, EXIT_LABEL_X, EXIT_LABEL_Y, {
+      font: 'F3X5',
+      tone: TONE.HUD_SUB_TEXT,
+      dither: 'quarter25',
+    }),
+    bakeTextTile(EXIT_LABEL_TEXT, EXIT_LABEL_X, EXIT_LABEL_Y, {
+      font: 'F3X5',
+      tone: TONE.HUD_SUB_TEXT,
+      dither: 'checker50',
+    }),
+    bakeTextTile(EXIT_LABEL_TEXT, EXIT_LABEL_X, EXIT_LABEL_Y, {
+      font: 'F3X5',
+      tone: TONE.HUD_SUB_TEXT,
+      dither: 'solid',
+    }),
+  ]
+}
+
+/**
+ * アイドル経過フレーム → 表示段階。
+ * **しきい値を二重に持たないよう、エンジン層もこの関数を使うこと。**
+ * `idleFrames` は `READY` 突入後にタップが無いまま経過したフレーム数。
+ */
+export function exitPromptPhaseOf(idleFrames: number): ExitPromptPhase {
+  const t = idleFrames - EXIT_IDLE_FRAMES
+  if (t < 0) return 'HIDDEN'
+  if (t < EXIT_FADE_STEP) return 'FADE_25'
+  if (t < EXIT_FADE_STEP * 2) return 'FADE_50'
+  if (t < EXIT_FADE_STEP * 3) return 'SOLID'
+  return 'ACTIVE'
+}
+
+/** タップを受け付けてよい段階か。ベタ到達から 6f の猶予を置く（詰めないこと） */
+export function isExitTapAccepted(phase: ExitPromptPhase | undefined): boolean {
+  return phase === 'ACTIVE'
+}
+
+/**
+ * タップ判定の矩形（キャンバス左上起点・論理 px）。**描画より広い。**
+ * 論理 12px は等倍で 12 CSS px しかなく指では押せないため、描画と判定を分離する。
+ * どの `scale` でも 44×44 CSS px 以上を満たす。
+ * **この矩形には一切描画しない**（枠線・背景・ハイライトを描かない）。
+ */
+export function exitTapRegion(scale: number): { x: number; y: number; w: number; h: number } {
+  return { x: 0, y: 0, w: 56, h: Math.max(12, Math.ceil(44 / Math.max(1, scale))) }
+}
+
+/**
+ * 離脱導線を描く。**`READY` 以外では何もしない。**
+ * state 側が古い値を持っていても `RUNNING` 中に出ないよう、ここで二重に閉じている。
+ */
+export function drawExitPrompt(ctx: CanvasRenderingContext2D, s: RenderState): boolean {
+  if (s.phase !== 'READY') return false
+  const phase = s.exitPrompt ?? 'HIDDEN'
+  if (phase === 'HIDDEN') return false
+  initExitLabel()
+  const index = phase === 'FADE_25' ? 0 : phase === 'FADE_50' ? 1 : 2
+  const tile = exitLabel![index]
+  // 焼いた 1 枚を drawImage 1 回で置く（等倍・整数座標）
+  ctx.drawImage(
+    tile,
+    0,
+    0,
+    tile.width,
+    tile.height,
+    EXIT_LABEL_X,
+    EXIT_LABEL_Y,
+    tile.width,
+    tile.height,
+  )
+  return true
+}
+
 /** 進捗バー 160×6（x80–239 / y4–9）。未到達 GB3 / 到達済み GB4 / 刻み GB1 */
 export function drawProgressBar(ctx: CanvasRenderingContext2D, s: RenderState): void {
   const x0 = 80
@@ -420,7 +526,13 @@ export function drawHud(ctx: CanvasRenderingContext2D, s: RenderState): void {
   fillRect(ctx, TONE.HUD_BG, 0, 0, LOGICAL_W, 11)
   fillRect(ctx, TONE.HUD_RULE, 0, 11, LOGICAL_W, 1)
 
-  drawText(ctx, `ST ${pad2(s.hud.stageNo)}`, 4, 3, { font: 'F3X5', tone: TONE.HUD_TEXT })
+  // 離脱導線が出ている間は `ST nn` を描かない（重ねず差し替える）
+  if (!drawExitPrompt(ctx, s)) {
+    drawText(ctx, `ST ${pad2(s.hud.stageNo)}`, EXIT_LABEL_X, EXIT_LABEL_Y, {
+      font: 'F3X5',
+      tone: TONE.HUD_TEXT,
+    })
+  }
   drawProgressBar(ctx, s)
 
   const right = s.hud.practice ? 'PRACTICE' : `× ${s.hud.attempts}`
