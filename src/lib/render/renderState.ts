@@ -27,7 +27,9 @@
  *  touchDevice    true なら TITLE の `SPACE / CLICK` を出さない
  *  player         プレイヤーの描画情報
  *  obstacles      画面に描く可能性のある障害物（カリング前でも可）
- *  stage          ステージ情報（地面・谷・ステージ名）
+ *  stage          ステージ情報（地面・谷・ステージ名）。
+ *                 **地面の模様は id から機械的に決まる**（`chapterOf(id)`）。
+ *                 旧 `tilePattern` は廃止したので、渡さないこと
  *  hud            HUD 帯の情報
  *  death          死亡演出の情報（死んでいなければ null）
  *  exitPrompt     離脱導線 `← STAGES` の表示段階（省略可・既定 HIDDEN）。
@@ -39,7 +41,9 @@
  *  readyUnlock    解放通知 2 行（['STAGE 04', 'UNLOCKED']）。無ければ null
  *  banner         `STAGE 1` / `GO!` / `PRACTICE` の一時表示。無ければ null
  *  title          TITLE 画面の情報（phase === 'TITLE' のときのみ参照）
- *  select         STAGE SELECT の情報（phase === 'SELECT' のときのみ参照）
+ *  select         STAGE SELECT の情報（phase === 'SELECT' のときのみ参照）。
+ *                 30 本対応で章タブ方式になった。**選択中の章の 5 件だけ**を渡すこと。
+ *                 タブの矩形は `chapterTabRect(i)`、枠の矩形は `selectCardRect(i)` で取れる
  *  result         RESULT の情報（phase === 'RESULT' のときのみ参照）
  * ----------------------------------------------------------------------------
  */
@@ -69,9 +73,14 @@ export type RenderObstacleKind =
   | 'PLATFORM' // OB-05 浮遊足場 32×8（幅可変・3スライス）
   | 'SPIKE' // OB-06 トゲ 8×8 反復
   | 'LIFTER' // OB-07 昇降ブロック 16×16（y が動く）
-  | 'FLYER' // OB-08 飛行体 12×12・2コマ
+  | 'FLYER' // OB-08 飛行体 12×12・2コマ（MID/HIGH ＝ 鳥）
   | 'CRUMBLE' // OB-09 崩落床 24×8・3コマ
   | 'SPRING' // OB-10 バネ 12×8 /12×16・2コマ
+  // --- ステージ拡張（GDD §15 / 指示書 §7A・R16）---
+  | 'BLOCK' // 汎用ブロック（w×h 可変）。**h ≥ 56 なら描画層が自動で WALL 表現に切り替える**
+  | 'SWING' // OB-11 横振りブロック 16×16。判定は block と同一・四隅を面取り
+  | 'SPEAR' // `spear`。伏せ（非致死・GB2）と伸長（致死・GB1）を frame で切り替える
+  | 'MOUSE' // `fly` LOW（地上型）12×12・2コマ。左へ走る
 
 /** 描画対象の障害物 1 個 */
 export interface RenderObstacle {
@@ -90,12 +99,36 @@ export interface RenderObstacle {
    * コマ指定。省略時は stageFrame から描画層が決める。
    * - CRUMBLE: 0 = 無傷 / 1 = ひび1 / 2 = ひび3
    * - SPRING : 0 = 縮み / 1 = 伸び（接触後 6f）
-   * - FLYER  : 省略推奨（描画層が floor(stageFrame/6)%2 で決める）
+   * - FLYER / MOUSE: 省略推奨（描画層が floor(stageFrame/6)%2 で決める）
+   * - **SPEAR: 0 = 伏せ（非致死・GB2）/ 1 = 伸長開始以降（致死・GB1）。**
+   *   これが階調を決める唯一の入力で、`h` は大きさだけを決める。【P0】の詳細は下記。
    */
   frame?: number
   /** true なら描かない（崩落床が 10f で消滅した後など） */
   hidden?: boolean
 }
+
+/**
+ * ============================================================================
+ *  【P0】`spear` の描き方 — 色が変わる瞬間と致死になる瞬間を 1 フレームも違えない
+ * ============================================================================
+ *
+ * `spear` は本作で唯一、**同一オブジェクトが非致死と致死を行き来する**障害物です。
+ * 階調の切り替えタイミングが、そのまま憲法2（自己帰属）の実装になります。
+ *
+ * | frame | 状態                 | 階調 | `h`（＝現在の視覚高さ）        |
+ * |-------|---------------------|------|------------------------------|
+ * | `0`   | 伏せ（**非致死・踏める**）| GB2  | 常に 2                        |
+ * | `1`   | 伸長中〜最大高（**致死**）| GB1  | `max(2, round(H(f)))` の現在値 |
+ *
+ * ・**`riseStart` と同一フレームで `frame` を 0 → 1 にすること。** 1 フレームでも遅れると
+ *   「黒くないのに死ぬ」フレームが生まれ、ルールA が嘘になります。
+ * ・逆に `H(f) = 0`（まだ伸びていない）の間も `frame = 1` にすること。判定は既に立っています。
+ *   **判定が先に立って見た目が後から追いつくのは過検出と同型の理不尽です。**
+ * ・`h` には**最大高ではなく現在の視覚高さ**を渡してください（40〜52 の固定値を決め打ちしない）。
+ * ・**判定と描画を同じ式から出すため、描画層の `spearVisualHeight()` / `spearIsLethal()` を
+ *   エンジン側でも使ってください**（しきい値を二重に持たない）。
+ */
 
 /** プレイヤーの描画情報。x は 56 固定（GDD 付録A）なので渡さない */
 export interface RenderPlayer {
@@ -127,9 +160,13 @@ export interface RenderStage {
   lengthPx: number
   /** 地面上面 y。通常 148 固定 */
   groundY: number
-  /** 地面の質感ドットのパターン。0 = A(S1) / 1 = B(S2) / 2 = C(S3) */
-  tilePattern: 0 | 1 | 2
-  /** 谷の区間一覧 */
+  /**
+   * 谷の区間一覧。
+   *
+   * ※ 地面の模様は **`id` から機械的に決まります**（章 = `Math.floor((id - 1) / 5)`）。
+   *   **ステージデータに背景指定を持たせないでください**（章とパターンがずれた状態を
+   *   作れてしまうため・指示書 §7A-5）。旧 `tilePattern` は廃止しました。
+   */
   pits: readonly RenderPit[]
 }
 
@@ -215,10 +252,29 @@ export interface RenderSelectEntry {
   bestTimeMs: number | null
 }
 
-/** STAGE SELECT 画面 */
+/**
+ * STAGE SELECT 画面（30 本対応・章タブ方式。GDD §15-9-2 / 指示書 §7A-6）。
+ *
+ * ※ 章まわりの 4 項目は**統合中の取りこぼしで画面が落ちないよう省略可**にしてあるが、
+ *   30 本対応では**必ず渡すこと**（省略時は章I・全章未解放・0/5・DEATHS 0 として描く）。
+ *
+ * 30 枠は 320×180 に入らないため、**章タブ 6 個 ＋ 選択中の章の 5 枠**で構成します。
+ * 章は `Math.floor((stageId - 1) / 5)`。描画層の `chapterOf()` を使ってください。
+ */
 export interface RenderSelect {
-  /** 第3幕は S1–S3 の 3 件だけ渡すこと（S4 以降は描かない） */
+  /**
+   * **選択中の章の 5 件だけ**を、ステージ番号の昇順で渡すこと。
+   * 実在しないステージは渡さない（渡された件数ぶんだけ枠を描く）。
+   */
   entries: readonly RenderSelectEntry[]
+  /** 選択中の章 0–5（I–VI） */
+  chapter?: number
+  /** 各章が解放済みか。長さ 6。未解放タブは地 GB2・文字 GB3 で描かれ、選択できない */
+  chapterUnlocked?: readonly boolean[]
+  /** 選択中の章のクリア本数 0–5（分母は常に 5 固定） */
+  clearedInChapter?: number
+  /** 選択中の章の総死亡回数。ゼロ埋めしない・カンマなし。未プレイでも `0` を出す */
+  deathsInChapter?: number
   /** 練習モードの凡例 `HOLD = PRACTICE` を出すか。本幕は false */
   showPracticeHint?: boolean
 }

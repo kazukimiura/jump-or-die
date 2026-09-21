@@ -146,8 +146,8 @@ const FLYER_BODY: DotRows = [
   '..11111111..', // y2 ┐ 判定域 x2–9 / y2–9
   '..11111111..', // y3 │
   '..11111111..', // y4 │
-  '..111111111.', // y5 │ x10 のくちばしは判定外
-  '..111111111.', // y6 │
+  '.111111111..', // y5 │ くちばしは x1（判定外）。**進行方向（左）を向く**
+  '.111111111..', // y6 │ 〔采配裁定 2026-09-21〕旧作図は x10（右）で進行方向と逆だった
   '..11111111..', // y7 │
   '..11111111..', // y8 │
   '..11111111..', // y9 ┘
@@ -232,40 +232,80 @@ export const SPR_CRUMBLE_2: DotRows = crackRows(SPR_CRUMBLE_0, [5, 11, 17])
  * SP-14  地面タイル（16 × 32・世界座標タイル）
  * ========================================================================== */
 
-/** ステージごとに変えてよいのは質感ドット 3–4 個だけ。上面・高さ・パレットは全ステージ共通 */
-const GROUND_TEXTURE_DOTS: readonly (readonly (readonly [number, number])[])[] = [
-  [
-    [3, 6],
-    [11, 14],
-    [7, 22],
-  ], // A: S1 FIRST STEP
-  [
-    [9, 5],
-    [2, 13],
-    [13, 25],
-  ], // B: S2 TWIN BLOCK
-  [
-    [6, 8],
-    [14, 17],
-    [1, 27],
-    [10, 29],
-  ], // C: S3 THE GAP
-]
-
-function groundTile(patternIndex: 0 | 1 | 2): DotRows {
+/**
+ * 章別の地面タイル 6 種（各 16 × 32）。**空（y12–147）には一切手を触れない。**
+ * `y0–y1` の GB3 上面 2px と `y2–y31` の GB2 本体は全章共通で、**変えるのは GB3 の模様だけ**。
+ *
+ * ディザとの境界条件（スタイルガイド §7-1）を全 6 種が満たす:
+ *   ① GB3 被覆率 ≤ 25%   ② GB3 が 2×2 の市松に並ばない
+ * いずれも「線」か「孤立点」であり、離れて見ても中間色ではなく**模様**として知覚される。
+ *
+ * **章の割り当てはステージ番号から機械的に決まる**（`chapterOf()`）。
+ * ステージデータに背景指定を持たせない（章とパターンがずれた状態を作れてしまうため）。
+ */
+function groundBase(): string[] {
   const rows: string[] = []
   for (let y = 0; y < 32; y++) rows.push(fillRow(16, y < 2 ? '3' : '2'))
-  for (const [x, y] of GROUND_TEXTURE_DOTS[patternIndex]) {
-    const chars = [...rows[y]]
-    chars[x] = '3'
-    rows[y] = chars.join('')
-  }
   return rows
 }
 
-export const SPR_GROUND_A: DotRows = groundTile(0)
-export const SPR_GROUND_B: DotRows = groundTile(1)
-export const SPR_GROUND_C: DotRows = groundTile(2)
+function putDot(rows: string[], x: number, y: number): void {
+  const chars = [...rows[y]]
+  chars[x] = '3'
+  rows[y] = chars.join('')
+}
+
+/** 章I — 孤立点 3 個（既存パターンA）。被覆率 0.6% */
+function tileI(): DotRows {
+  const rows = groundBase()
+  for (const [x, y] of [
+    [3, 6],
+    [11, 14],
+    [7, 22],
+  ] as const)
+    putDot(rows, x, y)
+  return rows
+}
+/** 章II — 水平線 2 本（y8 / y20 の全幅）。被覆率 6.7% */
+function tileII(): DotRows {
+  const rows = groundBase()
+  rows[8] = fillRow(16, '3')
+  rows[20] = fillRow(16, '3')
+  return rows
+}
+/** 章III — 破線（y14 の x0–x3 のみ。タイル連結で 4 on / 12 off）。被覆率 0.8% */
+function tileIII(): DotRows {
+  const rows = groundBase()
+  for (let x = 0; x <= 3; x++) putDot(rows, x, 14)
+  return rows
+}
+/** 章IV — 煉瓦目地（水平目地 y10 / y20 ＋ 段ごとに半分ずらした垂直目地）。被覆率 12.3% */
+function tileIV(): DotRows {
+  const rows = groundBase()
+  for (let y = 2; y <= 9; y++) putDot(rows, 0, y) // 段A 垂直目地 x0
+  rows[10] = fillRow(16, '3') // 水平目地
+  for (let y = 11; y <= 19; y++) putDot(rows, 8, y) // 段B 垂直目地 x8（半分ずらす）
+  rows[20] = fillRow(16, '3') // 水平目地
+  for (let y = 21; y <= 31; y++) putDot(rows, 0, y) // 段C 垂直目地 x0
+  return rows
+}
+/** 章V — 縦線（x4 の y4–y15 の 12px）。被覆率 2.5% */
+function tileV(): DotRows {
+  const rows = groundBase()
+  for (let y = 4; y <= 15; y++) putDot(rows, 4, y)
+  return rows
+}
+/** 章VI — 無地。装飾が消えることで「助けは無い」を言う。被覆率 0% */
+function tileVI(): DotRows {
+  return groundBase()
+}
+
+export const SPR_GROUND_I: DotRows = tileI()
+export const SPR_GROUND_II: DotRows = tileII()
+export const SPR_GROUND_III: DotRows = tileIII()
+export const SPR_GROUND_IV: DotRows = tileIV()
+export const SPR_GROUND_V: DotRows = tileV()
+export const SPR_GROUND_VI: DotRows = tileVI()
 
 /* ============================================================================
  * SP-15 〜 SP-17  アイコン
@@ -305,6 +345,79 @@ export const SPR_LOCK: DotRows = [
   '33333333',
   '33333333',
 ]
+
+/* ============================================================================
+ * SP-24 〜 SP-28  ステージ拡張の新規素材（指示書 §7A / 改訂 R16）
+ * ========================================================================== */
+
+/**
+ * SP-24 OB-11 横振りブロック（16 × 16）。
+ *
+ * 判定は `block` と完全に同一（全辺 1px 内側 ＝ x1–14 / y1–14）。
+ * **差は四隅の面取り 12 画素だけで、削った画素はすべて判定域の外側**にある。
+ * 判定域は 100% 塗りのままなので「見た目 ≥ 判定」の関係は 1px も変わっていない。
+ * 位相群（P-H）では period 180f の横振りが先読み 42f で 23% しか動かず、
+ * 動きだけでは `lifter`（縦振り）と判別できないため、輪郭で区別する。
+ */
+export const SPR_SWING: DotRows = [
+  '..333333333333..', // y0 上面 GB3（ルールB）
+  '.11111111111111.',
+  ...Array.from({ length: 12 }, () => '1111111111111111'), // y2–y13
+  '.11111111111111.', // y14
+  '..111111111111..', // y15
+]
+
+/**
+ * SP-25 `spear` 伏せ（6 × 2）。**非致死＝踏める。したがって GB1 を使わない（GB2）。**
+ * 黒く描けば「触れたら死ぬ」と嘘をつき、踏めるものを避けて別の死に方をさせる。
+ */
+export const SPR_SPEAR_DOWN: DotRows = ['.2222.', '222222']
+
+/** 槍の穂先 6 行（`h` が変わっても不変） */
+const SPEAR_TIP: DotRows = [
+  '..11..', // y0 先端。判定外（かすり域）
+  '..11..', // y1 判定上端は y2 なので、ここに触れても死なない
+  '.1111.', // y2 判定域 x1–4 開始。視覚と判定が 1px も違わない
+  '.1111.', // y3
+  '111111', // y4 返し。判定より左右 1px ずつ広い＝かすり許容
+  '111111', // y5
+]
+/** 柄。`h − 6` 行ぶん繰り返す */
+const SPEAR_SHAFT = '.1111.'
+/** `h` の絶対上限（GDD §15-5-2）。この高さで焼いておけば全ての `h` と `H` を賄える */
+export const SPEAR_MAX_H = 54
+
+/**
+ * SP-26 `spear` 伸長中／最大高（6 × 54）。**GB1。**
+ *
+ * 柄の行がすべて同一なので、**上端から `H` 行を切り出せば任意の `h`・任意の `H` を描ける**
+ * （指示書 §7A-2 の「穂先パターンの上から H 行だけが見える」）。槍は上から現れるのではなく、
+ * 下から押し上げられる。穂先は常に最上部にある。
+ */
+export const SPR_SPEAR: DotRows = [
+  ...SPEAR_TIP,
+  ...Array.from({ length: SPEAR_MAX_H - SPEAR_TIP.length }, () => SPEAR_SHAFT),
+]
+
+/**
+ * SP-28 `fly` LOW（地上型）＝ ネズミ（12 × 12・2 コマ）。**左へ走る**（プレイヤーへ向かう）。
+ * モチーフは `alt` のみで決まる（LOW ＝ ネズミ / MID・HIGH ＝ 既存の鳥）。
+ * **判定域 x2–9 / y2–9 は 2 コマで 1px も変えない。** 動かすのは脚（y10–11）だけ。
+ */
+const MOUSE_CORE: DotRows = [
+  '............', // y0
+  '.......11...', // y1 耳（判定外）
+  '..11111111..', // y2 判定域 上端
+  '.111111111..', // y3 頭が左へ
+  '11111111111.', // y4 鼻先 x0（判定外）
+  '.11111111111', // y5 尻尾 x10–11（判定外）
+  '..11111111..', // y6
+  '..11111111..', // y7
+  '..11111111..', // y8
+  '..11111111..', // y9 判定域 下端
+]
+export const SPR_MOUSE_A: DotRows = [...MOUSE_CORE, '..11..11....', '..1....1....']
+export const SPR_MOUSE_B: DotRows = [...MOUSE_CORE, '....11..11..', '.....1....1.']
 
 /* ============================================================================
  * SP-18 〜 SP-20  ロゴ `JUMP OR DIE`
@@ -441,9 +554,17 @@ export type SpriteName =
   | 'CRUMBLE_0'
   | 'CRUMBLE_1'
   | 'CRUMBLE_2'
-  | 'GROUND_A'
-  | 'GROUND_B'
-  | 'GROUND_C'
+  | 'SWING'
+  | 'SPEAR_DOWN'
+  | 'SPEAR'
+  | 'MOUSE_A'
+  | 'MOUSE_B'
+  | 'GROUND_I'
+  | 'GROUND_II'
+  | 'GROUND_III'
+  | 'GROUND_IV'
+  | 'GROUND_V'
+  | 'GROUND_VI'
   | 'STAR_FULL'
   | 'LOCK'
   | 'LOGO_JUMP'
@@ -470,9 +591,17 @@ export const SPRITE_DIMS: Record<SpriteName, readonly [number, number]> = {
   CRUMBLE_0: [24, 8],
   CRUMBLE_1: [24, 8],
   CRUMBLE_2: [24, 8],
-  GROUND_A: [16, 32],
-  GROUND_B: [16, 32],
-  GROUND_C: [16, 32],
+  SWING: [16, 16],
+  SPEAR_DOWN: [6, 2],
+  SPEAR: [6, SPEAR_MAX_H],
+  MOUSE_A: [12, 12],
+  MOUSE_B: [12, 12],
+  GROUND_I: [16, 32],
+  GROUND_II: [16, 32],
+  GROUND_III: [16, 32],
+  GROUND_IV: [16, 32],
+  GROUND_V: [16, 32],
+  GROUND_VI: [16, 32],
   STAR_FULL: [8, 8],
   LOCK: [8, 10],
   LOGO_JUMP: [92, 24],
@@ -499,9 +628,17 @@ export const SPRITES: Record<SpriteName, DotRows> = {
   CRUMBLE_0: SPR_CRUMBLE_0,
   CRUMBLE_1: SPR_CRUMBLE_1,
   CRUMBLE_2: SPR_CRUMBLE_2,
-  GROUND_A: SPR_GROUND_A,
-  GROUND_B: SPR_GROUND_B,
-  GROUND_C: SPR_GROUND_C,
+  SWING: SPR_SWING,
+  SPEAR_DOWN: SPR_SPEAR_DOWN,
+  SPEAR: SPR_SPEAR,
+  MOUSE_A: SPR_MOUSE_A,
+  MOUSE_B: SPR_MOUSE_B,
+  GROUND_I: SPR_GROUND_I,
+  GROUND_II: SPR_GROUND_II,
+  GROUND_III: SPR_GROUND_III,
+  GROUND_IV: SPR_GROUND_IV,
+  GROUND_V: SPR_GROUND_V,
+  GROUND_VI: SPR_GROUND_VI,
   STAR_FULL: SPR_STAR_FULL,
   LOCK: SPR_LOCK,
   LOGO_JUMP: SPR_LOGO_JUMP,
@@ -727,8 +864,37 @@ export function assertSprites(): string[] {
     errors.push('FLYER: 判定域 x2–9 / y2–9 が 2 コマで一致しない')
   }
 
+  // 3b) ネズミ 2 コマの判定域 x2–9 / y2–9 が完全一致するか（飛行体と同じ規則）
+  if (region(SPR_MOUSE_A, 2, 2, 9, 9) !== region(SPR_MOUSE_B, 2, 2, 9, 9)) {
+    errors.push('MOUSE: 判定域 x2–9 / y2–9 が 2 コマで一致しない')
+  }
+
+  // 3c) swing の面取りは判定域の外側だけ（判定域 x1–14 / y1–14 は 100% 塗り）
+  for (let y = 1; y <= 14; y++) {
+    for (let x = 1; x <= 14; x++) {
+      if (SPR_SWING[y][x] === '.') errors.push(`SWING: 判定域 (${x},${y}) が塗られていない`)
+    }
+  }
+
+  // 3d) 【P0】伏せ槍に GB1 を使わないこと（踏めるものを黒く描けば嘘になる）
+  if (SPR_SPEAR_DOWN.some((row) => row.includes('1'))) {
+    errors.push('SPEAR_DOWN: 伏せ槍に GB1 が使われている（非致死なので GB2 のみ）')
+  }
+  // 3e) 伸長した槍は GB1 のみ
+  if (SPR_SPEAR.some((row) => /[234]/.test(row))) {
+    errors.push('SPEAR: 伸長中の槍に GB1 以外の階調が使われている')
+  }
+
   // 4) 乗れない物体に GB3 の上面ラインが無いこと（ルールB）
-  for (const name of ['CEILING', 'SPIKE', 'FLYER_A', 'FLYER_B'] as SpriteName[]) {
+  for (const name of [
+    'CEILING',
+    'SPIKE',
+    'FLYER_A',
+    'FLYER_B',
+    'SPEAR',
+    'MOUSE_A',
+    'MOUSE_B',
+  ] as SpriteName[]) {
     if (SPRITES[name].some((row) => row.includes('3'))) {
       errors.push(`${name}: 乗れない物体に GB3 が含まれている（ルールB違反）`)
     }

@@ -130,7 +130,30 @@ export function drawSky(ctx: CanvasRenderingContext2D, top = 12): void {
   fillRect(ctx, TONE.SKY, 0, top, LOGICAL_W, LOGICAL_H - top)
 }
 
-const GROUND_TILES: readonly SpriteName[] = ['GROUND_A', 'GROUND_B', 'GROUND_C']
+/** 章タイルの並び。index = 章 0–5（I–VI） */
+const GROUND_TILES: readonly SpriteName[] = [
+  'GROUND_I',
+  'GROUND_II',
+  'GROUND_III',
+  'GROUND_IV',
+  'GROUND_V',
+  'GROUND_VI',
+]
+
+/** 1 章あたりのステージ数 */
+export const STAGES_PER_CHAPTER = 5
+/** 章の総数 */
+export const CHAPTER_COUNT = 6
+
+/**
+ * ステージ番号 → 章（0–5）。**`Math.floor((id - 1) / 5)` で機械的に決まる。**
+ * ステージデータに背景指定を持たせないこと（章とパターンがずれた状態を作れてしまう）。
+ * エンジン側もこの関数を使うこと（章の境目を二重に持たない）。
+ */
+export function chapterOf(stageId: number): number {
+  const c = Math.floor((stageId - 1) / STAGES_PER_CHAPTER)
+  return Math.max(0, Math.min(CHAPTER_COUNT - 1, c))
+}
 
 /**
  * 地面 — 16px 幅のタイルを世界座標に敷き詰める。スクロールはオフセットだけで済む。
@@ -143,7 +166,7 @@ export function drawGround(
   stage: RenderState['stage'],
 ): void {
   const gy = stage.groundY
-  const tile = GROUND_TILES[stage.tilePattern] ?? 'GROUND_A'
+  const tile = GROUND_TILES[chapterOf(stage.id)] ?? 'GROUND_I'
   const first = Math.floor(cam / 16) * 16
   for (let wx = first; wx < cam + LOGICAL_W; wx += 16) {
     drawSprite(ctx, tile, wx - cam, gy)
@@ -281,6 +304,155 @@ export function drawSpring(
   drawSprite(ctx, name, x, bottomY - h, hollow)
 }
 
+/* ----------------------------------------------------------------------------
+ * ステージ拡張の新ギミック（GDD §15 / スタイルガイド §2-6 / 指示書 §7A・R16）
+ * -------------------------------------------------------------------------- */
+
+/**
+ * WALL 表現に切り替わる高さ。**単発ジャンプで越えられなくなる高さと完全に一致させる。**
+ *
+ * **この分岐は `block` 専用。`spear`（h 40〜52）には適用しない。**
+ * 誤適用すると槍の設計域が丸ごと禁止帯に重なり、G4 が成立しなくなる。
+ * そのため `drawSpear()` は高さによる分岐を一切持たない別系統にしてある。
+ */
+export const WALL_MIN_H = 56
+
+/**
+ * 汎用ブロック。**`h ≥ 56` なら自動で WALL 表現（GB1 外周 2px ＋ 内部 GB2）に切り替える。**
+ *
+ * 単発ジャンプの到達は 52px、WALL は 56px 以上で差は 4px しかない。同じ絵にすると
+ * 「いつもの block」と判断して跳び、4px 足りずに死ぬ ——
+ * **画面上に情報が存在しないことによる死**になる。
+ * 内部 GB2 の面積は `(w−4) × (h−5)` で**高いほど中身が大きく見える**ので、
+ * プレイヤーは 4px の差を測らずに「中身が見えるほど高い」を覚えるだけで済む。
+ *
+ * 判定（全辺 1px 内側）は外周 GB1 の帯の中に完全に含まれるため、
+ * プレイヤーが内部 GB2 に触れることは物理的に起こらない＝嘘にならない。
+ */
+export function drawBlock(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  hollow = false,
+): void {
+  if (w <= 0 || h <= 0) return
+  if (hollow) {
+    // 中抜き反転（R3）: 外周 1px を GB1 のまま残し、内側を GB4 に抜く
+    fillRect(ctx, 4, x, y, w, h)
+    strokeRect1(ctx, 1, x, y, w, h)
+    return
+  }
+  if (h >= WALL_MIN_H) {
+    fillRect(ctx, 1, x, y, w, h) // 外周 GB1
+    fillRect(ctx, 2, x + 2, y + 3, w - 4, h - 5) // 内部 GB2（＝地面本体と同じ色）
+    fillRect(ctx, 3, x, y, w, 1) // 上面 GB3（乗れる。ルールB）
+    return
+  }
+  fillRect(ctx, 1, x, y, w, h) // GB1 ベタ
+  fillRect(ctx, 3, x, y, w, 1) // 上面 GB3
+}
+
+/** OB-11 横振りブロック 16×16。判定は block と同一で、四隅の面取りだけが違う */
+export function drawSwing(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  hollow = false,
+): void {
+  drawSprite(ctx, 'SWING', x, y, hollow)
+}
+
+/** `fly` LOW（地上型）＝ ネズミ 12×12・2 コマ。判定域 x2–9 / y2–9 は 2 コマで不変 */
+export function drawMouse(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  stageFrame: number,
+  hollow = false,
+  frameOverride?: number,
+): void {
+  const f = frameOverride ?? Math.floor(stageFrame / 6) % 2
+  drawSprite(ctx, f === 0 ? 'MOUSE_A' : 'MOUSE_B', x, y, hollow)
+}
+
+/** 伏せ槍の高さ（常に 2px） */
+export const SPEAR_DOWN_H = 2
+/** 槍の視覚幅 */
+export const SPEAR_W = 6
+
+/**
+ * `spear` が致死かどうか。**`riseStart` と同一フレームで true になる。**
+ * エンジン側もこの関数を使うこと（描画と判定を同じ式から出し、1 フレームのずれを構造的に消す）。
+ */
+export function spearIsLethal(stageFrame: number, riseStart: number): boolean {
+  return stageFrame >= riseStart
+}
+
+/**
+ * `spear` の現在の視覚高さ（＝判定高さ）。`H(f) = h × clamp((f − riseStart) / rise, 0, 1)` の線形。
+ * **`H(f) = 0` の間も 2px を返す**（判定が既に立っているため、見た目を先に立たせる）。
+ * `maxH` は 40〜52 の可変値。固定値を決め打ちしないこと。
+ */
+export function spearVisualHeight(
+  stageFrame: number,
+  riseStart: number,
+  rise: number,
+  maxH: number,
+): number {
+  if (stageFrame < riseStart) return SPEAR_DOWN_H
+  const t = rise <= 0 ? 1 : Math.max(0, Math.min(1, (stageFrame - riseStart) / rise))
+  return Math.max(SPEAR_DOWN_H, Math.round(maxH * t))
+}
+
+/**
+ * `spear` を描く。**階調を決めるのは `lethal` ただ一つ**で、`h` は大きさだけを決める。
+ *
+ * - `lethal === false`（伏せ）→ **GB2 の 6×2**。踏めるものを黒く描けば嘘になる
+ * - `lethal === true` → **GB1**。穂先は常に最上部（槍は下から押し上げられる）
+ *
+ * **高さによる分岐を持たない**（WALL の禁止帯は block 専用で、槍には適用しない）。
+ */
+export function drawSpear(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  bottomY: number,
+  h: number,
+  lethal: boolean,
+  hollow = false,
+): void {
+  if (!lethal) {
+    drawSprite(ctx, 'SPEAR_DOWN', x, bottomY - SPEAR_DOWN_H, hollow)
+    return
+  }
+  const vh = Math.max(SPEAR_DOWN_H, Math.round(h))
+  // 最大高スプライトの **上端から vh 行**を切り出す（穂先が常に最上部に来る）
+  drawSpritePart(ctx, 'SPEAR', 0, 0, SPEAR_W, vh, x, bottomY - vh, hollow)
+}
+
+/**
+ * 伏せ槍の直下 6px は、地面上面の GB3 ラインを描かない（GB2 に落とす）。
+ *
+ * **谷（OB-03）で教えた文法をそのまま再利用している。** 新しい記号を 1 つも増やさない。
+ * 谷は「線が途切れ、その先に地面が無い（GB4 の穴）」、槍は「線が途切れるが、地面は続いている（GB2）」。
+ * 結果は違うが前置きは同じ ——「ここは普通の地面ではない」。
+ */
+export function drawSpearGroundBreaks(
+  ctx: CanvasRenderingContext2D,
+  s: RenderState,
+  cam: number,
+): void {
+  const gy = s.stage.groundY
+  for (const ob of s.obstacles) {
+    if (ob.kind !== 'SPEAR' || ob.hidden) continue
+    if ((ob.frame ?? 0) !== 0) continue // 伸長中は槍そのものが見えるので不要
+    const x = ob.worldX - cam
+    if (x + SPEAR_W <= 0 || x >= LOGICAL_W) continue
+    fillRect(ctx, TONE.GROUND_BODY, x, gy, SPEAR_W, 2)
+  }
+}
+
 /**
  * 殺した障害物 1 個だけを **中抜き反転** で描くか（スタイルガイド §5-3 改訂 R3）。
  *
@@ -339,6 +511,19 @@ export function drawObstacle(
       break
     case 'SPRING':
       drawSpring(ctx, x, ob.y + ob.h, ob.frame ?? 0, hollow)
+      break
+    case 'BLOCK':
+      drawBlock(ctx, x, ob.y, ob.w, ob.h, hollow)
+      break
+    case 'SWING':
+      drawSwing(ctx, x, ob.y, hollow)
+      break
+    case 'MOUSE':
+      drawMouse(ctx, x, ob.y, s.stageFrame, hollow, ob.frame)
+      break
+    case 'SPEAR':
+      // frame が階調を決める唯一の入力（0 = 伏せ・非致死 / 1 = 伸長・致死）
+      drawSpear(ctx, x, ob.y + ob.h, ob.h, (ob.frame ?? 0) !== 0, hollow)
       break
   }
 }
@@ -619,6 +804,7 @@ export function drawPlayScreen(ctx: CanvasRenderingContext2D, s: RenderState): v
   const cam = Math.round(s.cameraX)
   drawSky(ctx, 12)
   drawGround(ctx, cam, s.stage)
+  drawSpearGroundBreaks(ctx, s, cam)
   for (const ob of s.obstacles) drawObstacle(ctx, s, ob, cam)
   drawPlayer(ctx, s)
   drawChunks(ctx, s)
@@ -707,8 +893,8 @@ export function drawTitleScreen(ctx: CanvasRenderingContext2D, s: RenderState): 
 /** 文言（半角5）。最小サイズ＝FONT_3x5、薄色＝GB4 の空の上なので GB2（5.67:1） */
 export const SELECT_BACK_TEXT = 'TITLE'
 /** 描画起点。従来の `←` アイコンと同じ左上。実寸 20×5px（x8–27 / y8–12） */
-export const SELECT_BACK_X = 8
-export const SELECT_BACK_Y = 8
+export const SELECT_BACK_X = 4
+export const SELECT_BACK_Y = 5
 
 /**
  * 戻り導線のタップ判定（キャンバス左上起点・論理 px）。**描画より広い。**
@@ -723,43 +909,94 @@ export function selectBackTapRegion(scale: number): { x: number; y: number; w: n
 
 const CARD_W = 88
 const CARD_H = 72
-const CARD_Y = 56
+/** 枠の左端 3 列。16 + 88×3 + 12×2 = 304（右マージン 16） */
 const CARD_X: readonly number[] = [16, 116, 216]
+/** 枠の上端 2 行。**5 枠を 3 + 2 の二行組**に並べる（6 枠目が必ず空く） */
+const CARD_Y: readonly number[] = [24, 104]
+
+/** 章タブ（GDD §15-9-2 / 指示書 §7A-6）。各 48 × 14 */
+export const TAB_W = 48
+export const TAB_H = 14
+const TAB_X0 = 32
+const TAB_Y = 0
+
+/** 章のローマ数字。タブのラベルはこれだけ（章名は入れない） */
+export const CHAPTER_NUMERALS: readonly string[] = ['I', 'II', 'III', 'IV', 'V', 'VI']
+/**
+ * 章名。**タブには入れず、選択中の章の集計見出しに 1 回だけ**出す。
+ * タブの役割は切替であって説明ではなく、6 つすべてに名前を入れると常時 6 語が並ぶ。
+ * そして選択中の章名は集計に出るので、**同じ語が画面に 2 回出る**ことになる。
+ */
+export const CHAPTER_NAMES: readonly string[] = [
+  'GROUND',
+  'AIR',
+  'MOTION',
+  'HEIGHT',
+  'TRAPS',
+  'ALL',
+]
+
+/** 章タブの矩形（論理 px）。タップ判定にも使えるようエンジン側へ公開する */
+export function chapterTabRect(index: number): { x: number; y: number; w: number; h: number } {
+  return { x: TAB_X0 + index * TAB_W, y: TAB_Y, w: TAB_W, h: TAB_H }
+}
+
+/** ステージ枠の矩形（論理 px）。index 0–4 が 3 + 2 の並び、index 5 は章集計の枠 */
+export function selectCardRect(index: number): { x: number; y: number; w: number; h: number } {
+  return {
+    x: CARD_X[index % 3],
+    y: CARD_Y[Math.floor(index / 3)],
+    w: CARD_W,
+    h: CARD_H,
+  }
+}
+
+/**
+ * 枠内でのステージ名の行組み。
+ * **1 行で収まるならそのまま、収まらなければ最初の半角スペースで 2 行に割る。**
+ * 全 30 本を実測したところ最長は半角 11（`FIRST WINGS` / `HIGH GROUND` / `FIRST SPEAR` /
+ * `JUMP OR DIE`）＝ 44px で、88px 枠には**すべて 1 行で収まる**。
+ * 2 行組は将来名前が伸びたときの保険として残してある。
+ */
+export function stageNameLines(name: string, maxWidth = CARD_W - 8): readonly string[] {
+  if (measureText(name, 'F3X5') <= maxWidth) return [name]
+  const at = name.indexOf(' ')
+  if (at < 0) return [name]
+  return [name.slice(0, at), name.slice(at + 1)]
+}
 
 /**
  * ステージ枠 88×72。
  *
  * 未解放枠は「文字を暗くする」のではなく **「地を暗くする」**（スタイルガイド §6-2 改訂 R5）。
- * 旧仕様の GB3 文字 × GB4 の空は 1.88:1 で §1-4 の禁止規定に抵触していた。
- * 新仕様は枠内を GB2 のベタで塗り、番号と錠を GB3（3.01:1）で置く。
+ * 枠内を GB2 のベタで塗り、番号と錠を GB3（3.01:1）で置く。
  * **罫線は描かない**（ベタの外形が境界そのもの）。**ステージ名・到達率も出さない。**
  */
 function drawSelectCard(
   ctx: CanvasRenderingContext2D,
   entry: RenderSelectEntry,
   x: number,
+  y: number,
 ): void {
   const cx = x + CARD_W / 2
 
   if (entry.state === 'LOCKED') {
-    fillRect(ctx, 2, x, CARD_Y, CARD_W, CARD_H) // 地を GB2 のベタで塗る＝「入れない」の記号
-    drawText(ctx, pad2(entry.no), cx, 64, { font: 'F5X7', tone: 3, scale: 2, align: 'center' })
-    drawSprite(ctx, 'LOCK', cx - 4, 104) // SP-16 は GB3。必ず GB2 のベタ地の上に置く
+    fillRect(ctx, 2, x, y, CARD_W, CARD_H) // 地を GB2 のベタで塗る＝「入れない」の記号
+    drawText(ctx, pad2(entry.no), cx, y + 8, { font: 'F5X7', tone: 3, scale: 2, align: 'center' })
+    drawSprite(ctx, 'LOCK', cx - 4, y + 48) // SP-16 は GB3。必ず GB2 のベタ地の上に置く
     return
   }
 
-  strokeRect1(ctx, 2, x, CARD_Y, CARD_W, CARD_H)
-  drawText(ctx, pad2(entry.no), cx, 64, { font: 'F5X7', tone: 1, scale: 2, align: 'center' })
+  strokeRect1(ctx, 2, x, y, CARD_W, CARD_H)
+  drawText(ctx, pad2(entry.no), cx, y + 8, { font: 'F5X7', tone: 1, scale: 2, align: 'center' })
 
-  // ステージ名は最大 2 行。半角スペースで折る
-  const words = entry.name.split(' ')
-  const lines = words.length > 1 ? [words[0], words.slice(1).join(' ')] : [entry.name]
+  const lines = stageNameLines(entry.name)
   lines.forEach((line, i) => {
-    drawText(ctx, line, cx, 86 + i * 8, { font: 'F3X5', tone: 2, align: 'center' })
+    drawText(ctx, line, cx, y + 30 + i * 8, { font: 'F3X5', tone: 2, align: 'center' })
   })
 
-  // 未クリアは **完全な空欄**。輪郭だけの星（器）を置かない（UIテキスト 11-2・采配承認済み）
-  if (entry.state === 'CLEARED') drawSprite(ctx, 'STAR_FULL', cx - 4, 104)
+  // 未クリアは **完全な空欄**。輪郭だけの星（器）を置かない（UIテキスト 11-2）
+  if (entry.state === 'CLEARED') drawSprite(ctx, 'STAR_FULL', cx - 4, y + 48)
 
   const record =
     entry.state === 'CLEARED' && entry.bestTimeMs != null
@@ -767,38 +1004,102 @@ function drawSelectCard(
       : entry.bestPct != null
         ? formatPct(entry.bestPct)
         : '--'
-  drawText(ctx, record, x + CARD_W - 4, 118, { font: 'F3X5', tone: 2, align: 'right' })
+  drawText(ctx, record, x + CARD_W - 4, y + 62, { font: 'F3X5', tone: 2, align: 'right' })
 }
 
-export function drawSelectScreen(ctx: CanvasRenderingContext2D, s: RenderState): void {
-  drawSky(ctx, 0)
-  drawGround(ctx, 0, s.stage)
-
-  drawText(ctx, SELECT_BACK_TEXT, SELECT_BACK_X, SELECT_BACK_Y, {
-    font: 'F3X5',
-    tone: TONE.TEXT_ON_SKY_SUB,
-  })
-  drawText(ctx, 'STAGE SELECT', LOGICAL_W / 2, 20, {
-    font: 'F3X5',
-    tone: TONE.TEXT_ON_SKY_SUB,
-    align: 'center',
-  })
-
-  const entries = s.select?.entries ?? []
-  entries.slice(0, CARD_X.length).forEach((e, i) => drawSelectCard(ctx, e, CARD_X[i]))
-
-  if (s.select?.showPracticeHint) {
-    drawText(ctx, 'HOLD = PRACTICE', LOGICAL_W / 2, 170, {
-      font: 'F3X5',
-      tone: TONE.TEXT_ON_GROUND_SUB,
+/**
+ * 章タブ 6 個。ラベルは `I`〜`VI` のローマ数字のみ。
+ *
+ * | 状態 | 地 | 文字 | 比 |
+ * |---|---|---|---|
+ * | 選択中 | GB2 ベタ | GB4 | 5.67:1 |
+ * | 未選択（解放済） | GB4（空のまま） | GB2 | 5.67:1 |
+ * | 未解放 | GB2 ベタ | GB3 | 3.01:1（R11 の未解放枠と同じ作法） |
+ */
+export function drawChapterTabs(ctx: CanvasRenderingContext2D, s: RenderState): void {
+  const sel = s.select
+  if (!sel) return
+  for (let i = 0; i < CHAPTER_COUNT; i++) {
+    const r = chapterTabRect(i)
+    const unlocked = sel.chapterUnlocked?.[i] ?? false
+    const selected = i === sel.chapter
+    let tone: Tone = 2
+    if (selected || !unlocked) {
+      // 地のベタは **右端 1px を空けて** 塗る。選択中（地GB2）と未解放（地GB2）が
+      // 隣り合うと 1 本の帯に見えてタブの境目が消えるため、空（GB4）の 1px で切る。
+      // 階調は増やしていない。タップ判定の矩形（chapterTabRect）は 48px のまま。
+      fillRect(ctx, 2, r.x, r.y, r.w - 1, r.h)
+      tone = selected ? 4 : 3
+    }
+    drawText(ctx, CHAPTER_NUMERALS[i], r.x + (r.w - 1) / 2, r.y + 4, {
+      font: 'F5X7',
+      tone,
       align: 'center',
     })
   }
 }
 
-/* ============================================================================
- * 画面: RESULT（ステージクリア時のみ）
- * ========================================================================== */
+/**
+ * 章の集計。**3 + 2 に並べたとき必ず空く 6 枠目**に入れるので、行を 1 本も増やさない。
+ *
+ * ```
+ *  III MOTION      3/5
+ *  DEATHS          412
+ * ```
+ * **章の総タイムは出さない。** 放置していても増えるので、投じた努力を表さない。
+ * 未プレイの章も同じ形式（`0/5` / `DEATHS 0`）。`--` は使わない。走っていれば 0 は測定値である。
+ */
+export function drawChapterSummary(ctx: CanvasRenderingContext2D, s: RenderState): void {
+  const sel = s.select
+  if (!sel) return
+  const r = selectCardRect(5)
+  const left = r.x + 4
+  const right = r.x + CARD_W - 4
+  const ch = Math.max(0, Math.min(CHAPTER_COUNT - 1, sel.chapter ?? 0))
+
+  drawText(ctx, `${CHAPTER_NUMERALS[ch]} ${CHAPTER_NAMES[ch]}`, left, r.y + 30, {
+    font: 'F3X5',
+    tone: 2,
+  })
+  drawText(ctx, `${sel.clearedInChapter ?? 0}/${STAGES_PER_CHAPTER}`, right, r.y + 30, {
+    font: 'F3X5',
+    tone: 2,
+    align: 'right',
+  })
+  drawText(ctx, 'DEATHS', left, r.y + 40, { font: 'F3X5', tone: 2 })
+  drawText(ctx, `${sel.deathsInChapter ?? 0}`, right, r.y + 40, {
+    font: 'F3X5',
+    tone: 2,
+    align: 'right',
+  })
+
+  if (sel.showPracticeHint) {
+    drawText(ctx, 'HOLD = PRACTICE', r.x + CARD_W / 2, r.y + 58, {
+      font: 'F3X5',
+      tone: 2,
+      align: 'center',
+    })
+  }
+}
+
+export function drawSelectScreen(ctx: CanvasRenderingContext2D, s: RenderState): void {
+  // 地は全面 GB4（30 本対応で地面は描かない。y0–15 タブ / 枠 2 行 / 6 枠目が章集計）
+  fillRect(ctx, TONE.SKY, 0, 0, LOGICAL_W, LOGICAL_H)
+
+  drawText(ctx, SELECT_BACK_TEXT, SELECT_BACK_X, SELECT_BACK_Y, {
+    font: 'F3X5',
+    tone: TONE.TEXT_ON_SKY_SUB,
+  })
+  drawChapterTabs(ctx, s)
+
+  const entries = s.select?.entries ?? []
+  entries.slice(0, STAGES_PER_CHAPTER).forEach((e, i) => {
+    const r = selectCardRect(i)
+    drawSelectCard(ctx, e, r.x, r.y)
+  })
+
+  drawChapterSummary(ctx, s)
+}
 
 /** 値を階調反転で表示する（地を GB1 で敷き、文字を GB4 で置く）。6f ごと × 5 回 = 600ms */
 function drawInvertedValue(
