@@ -20,6 +20,7 @@
 import {
   GRAVITY,
   JUMP_V0,
+  SPEAR_HIT_W,
   PLAYER_FOOT_OX,
   PLAYER_FOOT_OY,
   PLAYER_FOOT_W,
@@ -114,4 +115,24 @@ export function jumpHeightAt(k: number, v0: number = JUMP_V0): number {
 export function horizontalReach(speedPxPerFrame: number): number {
   // 表の値: S1 2.50 -> 104 / S2 2.75 -> 115 / S3 3.00 -> 125
   return Math.round(((2 * JUMP_V0) / GRAVITY) * speedPxPerFrame)
+}
+
+/**
+ * OB-14 槍を越えられている時間と生存窓（GDD §15-5-2 の解析解）。
+ *
+ * 致死ボックス下端の高さは `C(f) = 1 + V0·f − (G/2)·f²`（台形則の解析解）。
+ * 槍の判定上端は視覚頂点より 2px 下なので、越えられる条件は `C(f) > h − 2`。
+ *
+ *   越えている時間[f] = 2√(V0² − 2G(h − 3)) / G
+ *   生存窓[f]        = 上記 − (プレイヤー判定幅 10 + 槍判定幅 4) / 速度
+ *
+ * **データを書いた時点で速度別の窓を出せるようにするためのもの。**
+ * ソルバの全探索（1本書き終えないと鳴らない）を待たずに早期警告を出す用途で使う。
+ * 越えられない高さでは負値を返す。
+ */
+export function spearSurvivalWindow(h: number, speedPxPerFrame: number): number {
+  const inner = JUMP_V0 * JUMP_V0 - 2 * GRAVITY * (h - 3)
+  if (inner <= 0) return -1
+  const over = (2 * Math.sqrt(inner)) / GRAVITY
+  return over - (PLAYER_HITBOX_W + SPEAR_HIT_W) / speedPxPerFrame
 }

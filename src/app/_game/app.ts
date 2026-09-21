@@ -50,6 +50,9 @@ import type {
 } from '@/lib/render/renderState'
 // 離脱導線のしきい値は描画層に一元化されている（透B・改訂R9）。二重管理しない
 import {
+  CHAPTER_COUNT,
+  STAGES_PER_CHAPTER,
+  chapterOf,
   exitPromptPhaseOf,
   exitTapRegion,
   isExitTapAccepted,
@@ -194,26 +197,25 @@ const HIT_TITLE_SFX: HitRect = { x: 0, y: 164, w: 72, h: 16 }
 const HIT_TITLE_FLASH: HitRect = { x: 240, y: 164, w: 80, h: 16 }
 /**
  * 章構成（GDD §15-6 / §15-9-2）。6章 × 5ステージ = 30本。
- * 章タブは y0–15 に 6 個（各 48×14px）、枠は y24–120 に 5 枠（各 56×56px・間隔8px）。
  *
- * **描画は透B の担当で、まだ 30 本対応が入っていない。**
- * そのため本実装は「存在するステージだけを返す」形にしてあり、
- * S1〜S3 しか無い現状では章I の 3 件が返る＝従来と同じ挙動になる（休眠状態）。
- * 透B が章タブを実装して矩形ヘルパを公開したら、`exitTapRegion` と同様に
- * そちらへ委譲して数値の二重管理を解消すること。
+ * **章の境目は描画層の `chapterOf()` / `CHAPTER_COUNT` に委譲する。**
+ * 地面の模様も章から機械的に決まるため、エンジン側が章の定義を別に持つと
+ * 「章とパターンがずれた状態」を作れてしまう（指示書 §7A-5）。二重に持たない。
+ *
+ * 章タブの矩形は描画層がまだ公開していないため暫定でここに置く。
+ * 透B がヘルパを出したら `exitTapRegion` と同様にそちらへ委譲すること。
  */
-export const CHAPTERS: readonly (readonly number[])[] = [
-  [1, 2, 3, 4, 5],
-  [6, 7, 8, 9, 10],
-  [11, 12, 13, 14, 15],
-  [16, 17, 18, 19, 20],
-  [21, 22, 23, 24, 25],
-  [26, 27, 28, 29, 30],
-]
 /** 章タブ 6 個（各 48×14px、y0–15）。指の太さぶん縦に広げる */
 const CHAPTER_TAB_W = 48
 const CHAPTER_TAB_H = 16
-const CHAPTER_TAB_X0 = (LOGICAL_W - CHAPTER_TAB_W * 6) / 2
+const CHAPTER_TAB_X0 = (LOGICAL_W - CHAPTER_TAB_W * CHAPTER_COUNT) / 2
+
+/** その章に属するステージ番号 */
+function chapterStageIds(chapter: number): number[] {
+  const out: number[] = []
+  for (let i = 0; i < STAGES_PER_CHAPTER; i++) out.push(chapter * STAGES_PER_CHAPTER + i + 1)
+  return out
+}
 
 /** SELECT の枠（draw.ts の CARD_X / CARD_Y / CARD_W / CARD_H と一致させる） */
 const HIT_SELECT_CARDS: readonly HitRect[] = [
@@ -417,9 +419,10 @@ function dispatchTap(app: App, x: number, y: number): void {
         return
       }
       // 章タブ（複数章に実在ステージがあるときだけ反応する。現状は休眠）
-      if (y < CHAPTER_TAB_H && liveChapters(app).length > 1) {
+      if (y < CHAPTER_TAB_H && liveChapters().length > 1) {
         const i = Math.floor((x - CHAPTER_TAB_X0) / CHAPTER_TAB_W)
-        if (i >= 0 && i < CHAPTERS.length && liveChapters(app).includes(i)) {
+        // 未解放章・実在しない章のタブは反応しない
+        if (i >= 0 && i < CHAPTER_COUNT && liveChapters().includes(i) && chapterUnlocked(app)[i]) {
           app.chapter = i
         }
         return
@@ -736,18 +739,29 @@ function titleDemo(uiFrame: number): { y: number; motion: 'RUN' | 'RISE' | 'FALL
   return { y: ground, motion: 'RUN', worldX: uiFrame * 2.5 }
 }
 
-/** 現在の章に属し、かつ実在するステージ */
+/** 現在の章に属し、かつ実在するステージ（番号の昇順） */
 function chapterStages(app: App): StageDef[] {
-  const ids = CHAPTERS[app.chapter] ?? CHAPTERS[0]
-  return STAGES.filter((s) => ids.includes(s.id))
+  return STAGES.filter((s) => chapterOf(s.id) === app.chapter).sort((a, b) => a.id - b.id)
 }
 
 /** 実在ステージを1本でも持つ章の番号 */
-function liveChapters(app: App): number[] {
-  void app
-  return CHAPTERS.map((ids, i) => (STAGES.some((s) => ids.includes(s.id)) ? i : -1)).filter(
-    (i) => i >= 0,
-  )
+function liveChapters(): number[] {
+  const out: number[] = []
+  for (let c = 0; c < CHAPTER_COUNT; c++) {
+    if (STAGES.some((s) => chapterOf(s.id) === c)) out.push(c)
+  }
+  return out
+}
+
+/** 章が解放済みか＝その章に解放済みのステージが1本でもあるか */
+function chapterUnlocked(app: App): boolean[] {
+  const out: boolean[] = []
+  for (let c = 0; c < CHAPTER_COUNT; c++) {
+    out.push(
+      chapterStageIds(c).some((id) => STAGES.some((s) => s.id === id) && stageRecord(app.save, id).unlock),
+    )
+  }
+  return out
 }
 
 function selectEntries(app: App): RenderSelectEntry[] {
@@ -825,7 +839,7 @@ export function buildRenderState(app: App): RenderState {
       name: stage.name,
       lengthPx: stage.lengthPx,
       groundY: stage.groundY,
-      tilePattern: (Math.min(2, Math.max(0, stage.id - 1)) as 0 | 1 | 2),
+      // 地面の模様は id から機械的に決まる（描画層が chapterOf で解決する）
       pits: isTitle ? [] : pitsOf(stage),
     },
     hud: {
@@ -856,7 +870,21 @@ export function buildRenderState(app: App): RenderState {
           flashOn: !app.save.opt.reducedFlash,
         }
       : undefined,
-    select: app.phase === 'SELECT' ? { entries: selectEntries(app), showPracticeHint: false } : undefined,
+    select:
+      app.phase === 'SELECT'
+        ? {
+            entries: selectEntries(app),
+            chapter: app.chapter,
+            chapterUnlocked: chapterUnlocked(app),
+            clearedInChapter: chapterStages(app).filter((s) => stageRecord(app.save, s.id).clear)
+              .length,
+            deathsInChapter: chapterStages(app).reduce(
+              (n, s) => n + stageRecord(app.save, s.id).die,
+              0,
+            ),
+            showPracticeHint: false,
+          }
+        : undefined,
     result: app.phase === 'RESULT' && app.result ? app.result : undefined,
   }
 }

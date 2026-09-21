@@ -66,6 +66,7 @@ import {
   PLAYER_HITBOX_W,
   SPEAR_H_MAX,
   SPEAR_H_MIN,
+  SPEAR_H_PRACTICAL_MAX,
   SPEAR_RISE_MAX,
   SPEAR_RISE_MIN,
   SWING_AMP_MAX,
@@ -86,7 +87,7 @@ import {
 } from './constants'
 import { killRect } from './collision'
 import { canJumpNow } from './input'
-import { horizontalReach, lethalBottom, lethalTop } from './physics'
+import { horizontalReach, lethalBottom, lethalTop, spearSurvivalWindow } from './physics'
 import {
   cloneSim,
   createSim,
@@ -97,6 +98,7 @@ import {
   stepSim,
 } from './stageRuntime'
 import type {
+  BlockObj,
   ObjKind,
   Rect,
   ResolvedObj,
@@ -1130,6 +1132,35 @@ function landableIntervals(stage: StageDef): { x: number; end: number }[] {
 }
 
 /**
+ * ブロックの高さ検査。**引数の型を `BlockObj` に固定してあるのが本体である。**
+ *
+ * §5-3 の上限 40px は §15-3 で撤廃され、`h >= 56` は WALL（G2）として扱う。
+ * 禁止帯 `40 < h < 56` は次の2つの理由で塞ぐ。
+ *
+ *  1. 単発では越えられないのに踏み台規定（W1〜W5）も掛からない無主地帯である
+ *  2. **より重い理由**: この帯の静止ブロックは高い槍とほぼ同じ狭い窓を持ちながら、
+ *     `spear` に課した `warn` マーカーと伏せ状態の可視性を回避できる。
+ *     **予告なしの槍をただのブロックとして密輸できる抜け道**になる
+ *
+ * 【型で分離している理由 — これを実行時条件に頼ってはならない】
+ * `spear` の設計域は `h` 40〜54 で、**この禁止帯と完全に重なる**。
+ * 誤って `spear` に適用すると G4 が丸ごと成立しなくなる。
+ * 引数型を `BlockObj` にしておけば、`SpearObj` を渡した時点でコンパイルが通らない。
+ */
+function blockHeightIssues(o: BlockObj): CheckIssue[] {
+  if (o.h > OBSTACLE_MAX_H && o.h < WALL_MIN_H) {
+    return [
+      {
+        level: 'FAIL',
+        code: 'OBJ_H',
+        message: `ブロックの高さ ${o.h}px が禁止帯（通常上限 ${OBSTACLE_MAX_H}px 超 〜 WALL 下限 ${WALL_MIN_H}px 未満）にあります (x=${o.x})。単発で越えられず踏み台規定も掛からないうえ、予告なしの槍をブロックとして密輸できる`,
+      },
+    ]
+  }
+  return []
+}
+
+/**
  * G2 WALL の幾何規定 W1〜W5（GDD §15-3）。
  *
  * `h >= 56` の block を WALL と呼ぶ。単発ジャンプ（頂点 52.08px）では絶対に越えられず、
@@ -1257,18 +1288,8 @@ export function staticChecks(stage: StageDef, budget: StageBudget): CheckIssue[]
         })
       }
     }
-    /*
-     * ブロックの高さ。
-     * §5-3 の上限 40px は §15-3 で撤廃され、`h >= 56` は WALL（G2）として扱う。
-     * 40 < h < 56 は「単発では越えられないのに踏み台規定も掛からない」宙ぶらりんの帯なので禁止する。
-     */
-    if (o.t === 'block' && o.h > OBSTACLE_MAX_H && o.h < WALL_MIN_H) {
-      issues.push({
-        level: 'FAIL',
-        code: 'OBJ_H',
-        message: `ブロックの高さ ${o.h}px が通常上限 ${OBSTACLE_MAX_H}px と WALL 下限 ${WALL_MIN_H}px の間にあります (x=${o.x})。単発で越えられず踏み台規定も掛からない`,
-      })
-    }
+    // ブロックの高さ。**`block` 型にしか適用しない**（下の関数が型で保証する）
+    if (o.t === 'block') issues.push(...blockHeightIssues(o))
     // OB-11 swing のパラメータ範囲（GDD §15-2）
     if (o.t === 'swing') {
       if (o.amp < SWING_AMP_MIN || o.amp > SWING_AMP_MAX) {
@@ -1288,12 +1309,37 @@ export function staticChecks(stage: StageDef, budget: StageBudget): CheckIssue[]
     }
     // OB-14 spear（GDD §15-5）
     if (o.t === 'spear') {
+      /*
+       * 型上限 54 は「回避不能になる線」（速度に依存しない・社長指示の違反を防ぐ）。
+       * **境界の内側を示す線ではなく、境界の外側に打った杭である。**
+       */
       if (o.h < SPEAR_H_MIN || o.h > SPEAR_H_MAX) {
         issues.push({
           level: 'FAIL',
           code: 'SPEAR_H',
-          message: `槍の高さ ${o.h}px が範囲 ${SPEAR_H_MIN}〜${SPEAR_H_MAX} の外です (x=${o.x})。${SPEAR_H_MAX}px 超は回避不能になる`,
+          message: `槍の高さ ${o.h}px が型上限の範囲 ${SPEAR_H_MIN}〜${SPEAR_H_MAX} の外です (x=${o.x})。${SPEAR_H_MAX}px 超は回避不能になる`,
         })
+      } else if (o.h > SPEAR_H_PRACTICAL_MAX) {
+        /*
+         * 設計上限 52 は「生存窓が帯に収まる線」で、**速度の関数**である。
+         * 生存窓検査は1本書き終えた後にしか鳴らないので、
+         * **データを書いた時点で速度別の解析窓を添えて早期に警告する**。
+         */
+        const w = spearSurvivalWindow(o.h, stage.speedPxPerFrame)
+        const floor = budget.windowMinFrames
+        if (w < floor) {
+          issues.push({
+            level: 'FAIL',
+            code: 'SPEAR_H_WINDOW',
+            message: `槍 h=${o.h} は速度 ${stage.speedPxPerFrame} での解析生存窓が ${w.toFixed(2)}f となり、下限 ${floor}f を割ります (x=${o.x})。設計上限は ${SPEAR_H_PRACTICAL_MAX}px`,
+          })
+        } else {
+          issues.push({
+            level: 'WARN',
+            code: 'SPEAR_H_HIGH',
+            message: `槍 h=${o.h} は既定の設計上限 ${SPEAR_H_PRACTICAL_MAX}px を超えます (x=${o.x})。速度 ${stage.speedPxPerFrame} での解析生存窓 ${w.toFixed(2)}f（下限 ${floor}f）。この速度での実測を添えること`,
+          })
+        }
       }
       if (o.rise < SPEAR_RISE_MIN || o.rise > SPEAR_RISE_MAX) {
         issues.push({
