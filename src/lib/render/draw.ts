@@ -695,6 +695,32 @@ export function drawTitleScreen(ctx: CanvasRenderingContext2D, s: RenderState): 
  * 画面: STAGE SELECT
  * ========================================================================== */
 
+/* ----------------------------------------------------------------------------
+ * 戻り導線 `TITLE`（采配裁定 M-2 / 2026-09-21）
+ *
+ * UIテキスト §11-1 の指定に従い、`←` アイコンではなく **`TITLE` の文字列**で描く。
+ * 行き先を名指しするほうが記号より情報量が上であること、および
+ * **`←` は離脱導線（`← STAGES`）の専用マーカーとして温存する**ことが理由。
+ * セレクト → タイトルは通常の画面遷移、離脱導線はプレイの中断であり、矢印は後者を指す。
+ * -------------------------------------------------------------------------- */
+
+/** 文言（半角5）。最小サイズ＝FONT_3x5、薄色＝GB4 の空の上なので GB2（5.67:1） */
+export const SELECT_BACK_TEXT = 'TITLE'
+/** 描画起点。従来の `←` アイコンと同じ左上。実寸 20×5px（x8–27 / y8–12） */
+export const SELECT_BACK_X = 8
+export const SELECT_BACK_Y = 8
+
+/**
+ * 戻り導線のタップ判定（キャンバス左上起点・論理 px）。**描画より広い。**
+ * 文字は 20×5px しかなく指では押せないため、離脱導線と同じ考え方で
+ * どの `scale` でも 44×44 CSS px 以上を確保する。
+ * **この矩形には一切描画しない**（枠線・背景・ハイライトを描かない）。
+ * 枠は y56 から始まるので、最大高（scale 1 の 44px）でもカードと重ならない。
+ */
+export function selectBackTapRegion(scale: number): { x: number; y: number; w: number; h: number } {
+  return { x: 0, y: 0, w: 56, h: Math.max(16, Math.ceil(44 / Math.max(1, scale))) }
+}
+
 const CARD_W = 88
 const CARD_H = 72
 const CARD_Y = 56
@@ -748,7 +774,10 @@ export function drawSelectScreen(ctx: CanvasRenderingContext2D, s: RenderState):
   drawSky(ctx, 0)
   drawGround(ctx, 0, s.stage)
 
-  drawSprite(ctx, 'ARROW', 8, 8)
+  drawText(ctx, SELECT_BACK_TEXT, SELECT_BACK_X, SELECT_BACK_Y, {
+    font: 'F3X5',
+    tone: TONE.TEXT_ON_SKY_SUB,
+  })
   drawText(ctx, 'STAGE SELECT', LOGICAL_W / 2, 20, {
     font: 'F3X5',
     tone: TONE.TEXT_ON_SKY_SUB,
