@@ -102,17 +102,38 @@ export const ALL_MESSAGES: readonly DeathMessage[] = [
   ...GROUP_SPECIAL,
 ]
 
-/** 固定文（抽選しない。§14-5 の新規固定ルール） */
+/** 固定文（抽選しない。§14-5 / §24-3） */
 export const FIXED = {
-  /** 50回死亡で次ステージ解放が発火した死亡 */
-  MERCY: '50かい しんだ。',
-  /** 通算死亡 100 回到達 */
-  DEATHS_100: 'そこまで やるか。',
-  /** 通算死亡 500 回到達 */
-  DEATHS_500: 'もう プロだね。',
   /** 自己ベスト到達率を更新した死亡 */
   NEW_BEST: 'こえた。',
 } as const
+
+/**
+ * 通算死亡回数のマイルストーン（UIテキスト §24-1）。
+ *
+ * **`1 / 2 / 5 × 10ⁿ`。上限なし。** 100 / 200 / 500 / 1000 / 2000 / 5000 / 10000 …
+ * 刻みを何段か並べる方式は、いずれその先で必ず途切れる。規則そのものを
+ * 「途切れないもの」に置き換えてある。1・2・5 は定規や計量カップの目盛りと同じ刻み方で、
+ * **刻み方そのものが「これは評価ではなく計測である」と語る**。
+ *
+ * 表示は `DEATHS n` のみ。**日本語を添えない**（§24-2）。
+ * 旧 `そこまで やるか。` / `もう プロだね。` は文脈 恵が撤回した
+ * （称賛もまた人格への言及であり、「へた。」が禁止なら「プロ。」も禁止）。
+ */
+export function isDeathMilestone(total: number): boolean {
+  if (total < 100) return false
+  let unit = 100
+  while (unit <= total) {
+    if (total === unit || total === unit * 2 || total === unit * 5) return true
+    unit *= 10
+  }
+  return false
+}
+
+/** マイルストーンの表示文。ゼロ埋めしない・カンマを使わない（§15-6 の全画面規則） */
+export function milestoneText(total: number): string {
+  return `DEATHS ${total}`
+}
 
 /** 抽選に必要な文脈 */
 export interface MessageContext {
@@ -133,7 +154,7 @@ export interface MessageContext {
   consecutiveDeaths: number
   /** このセッション最初の死亡か（D-35 の単発条件） */
   sessionFirstDeath: boolean
-  /** 50回死亡による解放がこの死亡で発火したか */
+  /** 次ステージ解放がこの死亡で発火したか（救済解放） */
   mercyUnlock: boolean
   /**
    * 直前2回の死亡のいずれかで優先抽選が発火していたか（§19-2 クールダウン）。
@@ -242,10 +263,17 @@ export function pickDeathMessage(
   recent: readonly string[],
   rng: () => number,
 ): PickedMessage {
-  // --- 1. 単発 ONCE（優先順位は §14-5 の既定どおり） ----------------------
-  if (ctx.mercyUnlock) return { text: FIXED.MERCY, fixed: true, priority: false }
-  if (ctx.totalDeaths === 100) return { text: FIXED.DEATHS_100, fixed: true, priority: false }
-  if (ctx.totalDeaths === 500) return { text: FIXED.DEATHS_500, fixed: true, priority: false }
+  /*
+   * 1. 単発 ONCE。優先順位は **解放 > マイルストーン > `こえた。` > 条件付き > 通常**（§24-3）。
+   *
+   * 救済解放が発火した回は、解放通知2行が枠を占有するのでメッセージを出さない
+   * （`50かい しんだ。` は §23-6 で撤回された。読み上げられない条件式は読み上げない）。
+   * **マイルストーンは持ち越さない。** 解放と重なった回は解放が優先し、その段は消化される。
+   */
+  if (ctx.mercyUnlock) return { text: '', fixed: true, priority: false }
+  if (isDeathMilestone(ctx.totalDeaths)) {
+    return { text: milestoneText(ctx.totalDeaths), fixed: true, priority: false }
+  }
   if (ctx.newBest) return { text: FIXED.NEW_BEST, fixed: true, priority: false }
   if (ctx.sessionFirstDeath) return { text: byId('D-35').text, fixed: true, priority: false }
 

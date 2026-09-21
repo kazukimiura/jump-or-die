@@ -151,6 +151,29 @@ export function goalFrame(stage: StageDef): number {
 // 動体の決定論（GDD §5-4）
 // ---------------------------------------------------------------------------
 
+/**
+ * OB-14 槍の伸長開始フレーム。**cameraX（= stageFrame x 速度）のみから決まる。**
+ * プレイヤーの位置・速度・入力・状態を一切参照しない（§15-5-4【P0】）。
+ */
+export function spearRiseStart(stage: StageDef, def: { triggerX: number }): number {
+  return def.triggerX / stage.speedPxPerFrame
+}
+
+/**
+ * OB-14 槍の視覚高さ（＝伸長量）。`H(f) = h * clamp((f - riseStart) / rise, 0, 1)` の線形。
+ * 伏せ状態でも 2px は見えている（伏せている基部が見えることは §15-5-5 で【P0】）。
+ * 描画層の `spearVisualHeight()` と同一の式で、両者がずれないようにしてある。
+ */
+export function spearHeightAt(
+  def: { h: number; rise: number },
+  riseStart: number,
+  stageFrame: number,
+): number {
+  if (stageFrame < riseStart) return SPEAR_IDLE_H
+  const t = def.rise <= 0 ? 1 : Math.max(0, Math.min(1, (stageFrame - riseStart) / def.rise))
+  return Math.max(SPEAR_IDLE_H, Math.round(def.h * t))
+}
+
 /** 三角波。0 -> 1 -> 0 を周期1で往復する。t は周期で割った値 */
 export function triangle(t: number): number {
   const u = t - Math.floor(t)
@@ -252,13 +275,12 @@ function resolveStatic(
       }
     case 'spear': {
       // トリガーは cameraX のみ。プレイヤーの位置・状態を一切参照しない（§15-5-4【P0】）
-      const riseStart = def.triggerX / stage.speedPxPerFrame
-      const t = (stageFrame - riseStart) / def.rise
-      const ratio = t <= 0 ? 0 : t >= 1 ? 1 : t
-      const grown = Math.round(def.h * ratio)
-      // 伏せ状態は高さ2px・非致死（地面と同じく踏める）
-      const up = grown > SPEAR_IDLE_H
-      const hitH = up ? grown - SPEAR_TIP_INSET : SPEAR_IDLE_H
+      const riseStart = spearRiseStart(stage, def)
+      // 致死は「伸び始めたフレームから」。描画層の spearIsLethal() と同一規則
+      const up = stageFrame >= riseStart
+      const visH = spearHeightAt(def, riseStart, stageFrame)
+      // 判定上端は視覚頂点より 2px 下（§4-3 のトゲと同思想の甘さ）
+      const hitH = Math.max(0, visH - SPEAR_TIP_INSET)
       return {
         ...base,
         x: def.x + (SPEAR_VIS_W - SPEAR_HIT_W) / 2,
@@ -266,7 +288,7 @@ function resolveStatic(
         w: SPEAR_HIT_W,
         h: hitH,
         landable: false,
-        lethal: up,
+        lethal: up && hitH > 0,
       }
     }
     case 'spring':

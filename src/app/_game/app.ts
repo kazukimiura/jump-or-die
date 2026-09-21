@@ -26,11 +26,13 @@ import {
   LOGICAL_H,
   LOGICAL_W,
   PLAYER_SPRITE_H,
+  SPEAR_VIS_W,
 } from '@/lib/game/constants'
 import { jumpHeightAt } from '@/lib/game/physics'
 import {
   cameraX,
   createSim,
+  spearRiseStart,
   playerWorldX,
   progressRatio,
   resetSim,
@@ -53,10 +55,14 @@ import {
   CHAPTER_COUNT,
   STAGES_PER_CHAPTER,
   chapterOf,
+  chapterTabRect,
   exitPromptPhaseOf,
   exitTapRegion,
   isExitTapAccepted,
   selectBackTapRegion,
+  selectCardRect,
+  spearIsLethal,
+  spearVisualHeight,
 } from '@/lib/render/draw'
 import {
   MERCY_DEATHS,
@@ -205,11 +211,6 @@ const HIT_TITLE_FLASH: HitRect = { x: 240, y: 164, w: 80, h: 16 }
  * 章タブの矩形は描画層がまだ公開していないため暫定でここに置く。
  * 透B がヘルパを出したら `exitTapRegion` と同様にそちらへ委譲すること。
  */
-/** 章タブ 6 個（各 48×14px、y0–15）。指の太さぶん縦に広げる */
-const CHAPTER_TAB_W = 48
-const CHAPTER_TAB_H = 16
-const CHAPTER_TAB_X0 = (LOGICAL_W - CHAPTER_TAB_W * CHAPTER_COUNT) / 2
-
 /** その章に属するステージ番号 */
 function chapterStageIds(chapter: number): number[] {
   const out: number[] = []
@@ -217,12 +218,6 @@ function chapterStageIds(chapter: number): number[] {
   return out
 }
 
-/** SELECT の枠（draw.ts の CARD_X / CARD_Y / CARD_W / CARD_H と一致させる） */
-const HIT_SELECT_CARDS: readonly HitRect[] = [
-  { x: 16, y: 56, w: 88, h: 72 },
-  { x: 116, y: 56, w: 88, h: 72 },
-  { x: 216, y: 56, w: 88, h: 72 },
-]
 /**
  * 死亡後 `READY` の離脱導線 `← STAGES`（GDD §14-16-3 アイドル顕在化）。
  * 描画は HUD 帯左端の 56×12px（`ST nn` と差し替え・透B担当）。
@@ -418,18 +413,17 @@ function dispatchTap(app: App, x: number, y: number): void {
         app.phase = 'TITLE'
         return
       }
-      // 章タブ（複数章に実在ステージがあるときだけ反応する。現状は休眠）
-      if (y < CHAPTER_TAB_H && liveChapters().length > 1) {
-        const i = Math.floor((x - CHAPTER_TAB_X0) / CHAPTER_TAB_W)
+      // 章タブ。矩形は描画層が持つ（数値をこちら側に書かない）
+      const live = liveChapters()
+      for (let i = 0; i < CHAPTER_COUNT; i++) {
+        if (!inRect(chapterTabRect(i), x, y)) continue
         // 未解放章・実在しない章のタブは反応しない
-        if (i >= 0 && i < CHAPTER_COUNT && liveChapters().includes(i) && chapterUnlocked(app)[i]) {
-          app.chapter = i
-        }
+        if (live.includes(i) && chapterUnlocked(app)[i]) app.chapter = i
         return
       }
       const entries = chapterStages(app)
-      for (let i = 0; i < HIT_SELECT_CARDS.length && i < entries.length; i++) {
-        if (!inRect(HIT_SELECT_CARDS[i], x, y)) continue
+      for (let i = 0; i < STAGES_PER_CHAPTER && i < entries.length; i++) {
+        if (!inRect(selectCardRect(i), x, y)) continue
         const id = entries[i].id
         if (!stageRecord(app.save, id).unlock) return // 未解放は反応しない
         enterStage(app, id)
@@ -571,7 +565,8 @@ function enterDeath(app: App): void {
     priorityRecent: app.priorityHistory.some(Boolean),
   }
   const picked = pickDeathMessage(ctx, app.recentMessages, app.deps.random)
-  app.readyMessage = picked.text
+  // 解放が発火した回は解放通知2行が枠を占有するので、メッセージ行は空にする（§23-6 / §24-3）
+  app.readyMessage = picked.text === '' ? null : picked.text
   // 単発 ONCE で出した文は除外履歴に入れない（UIテキスト §14-5 / §19-2）
   if (!picked.fixed) app.recentMessages = [picked.text, ...app.recentMessages].slice(0, 2)
   app.priorityHistory = [picked.priority, ...app.priorityHistory].slice(0, 2)
@@ -685,11 +680,19 @@ function pad2(n: number): string {
  * RenderState の組み立て
  * ========================================================================== */
 
-/** エンジンの障害物種別 → 描画層の種別（1:1 対応。GDD §5-1） */
+/**
+ * エンジンの障害物種別 → 描画層の種別（GDD §5-1 / §15・指示書 §7A）。
+ *
+ * `block` は 12x16 / 24x32 の古典サイズだけ専用スプライトを持ち、
+ * それ以外の可変サイズは汎用 `BLOCK` に流す。**h >= 56 の WALL 表現は描画層が
+ * 自動で切り替える**ので、こちら側で高さを見て分岐しない。
+ */
 function renderKindOf(o: ResolvedObj): RenderObstacleKind | null {
   switch (o.kind) {
     case 'block':
-      return o.w >= 24 && o.h >= 32 ? 'BLOCK_L' : 'BLOCK_S'
+      if (o.w === 12 && o.h === 16) return 'BLOCK_S'
+      if (o.w === 24 && o.h === 32) return 'BLOCK_L'
+      return 'BLOCK'
     case 'spike':
       return 'SPIKE'
     case 'ceil':
@@ -698,25 +701,20 @@ function renderKindOf(o: ResolvedObj): RenderObstacleKind | null {
       return 'PLATFORM'
     case 'lift':
       return 'LIFTER'
+    // 地上を走る LOW はネズミ、空を飛ぶ MID/HIGH は鳥（データは同一・見た目だけ分ける）
     case 'fly':
-      return 'FLYER'
+      return o.def.t === 'fly' && o.def.alt === 'LOW' ? 'MOUSE' : 'FLYER'
     case 'crumble':
       return 'CRUMBLE'
     case 'spring':
       return 'SPRING'
+    case 'swing':
+      return 'SWING'
+    case 'spear':
+      return 'SPEAR'
     // 谷は地形として stage.pits で描く。予告マーカーは判定も描画も持たない
     case 'pit':
     case 'warn':
-      return null
-    /*
-     * OB-11 swing / OB-14 spear（GDD §15-2 / §15-5）。
-     * **描画層にまだ種別が無い**（RenderObstacleKind に SWING / SPEAR が未定義）。
-     * 透B の対応が入るまでは描画対象から外す。エンジン側の判定は既に効いているので、
-     * ここで null を返しても当たり判定・ソルバ検査には影響しない。
-     * S4 以降のステージデータはまだ作っていないため、実画面に出る配置は存在しない。
-     */
-    case 'swing':
-    case 'spear':
       return null
   }
 }
@@ -800,6 +798,26 @@ export function buildRenderState(app: App): RenderState {
     for (const o of resolveVisibleObjects(stage, sim.stageFrame, sim)) {
       const kind = renderKindOf(o)
       if (!kind) continue
+      if (kind === 'SPEAR' && o.def.t === 'spear') {
+        /*
+         * 槍は「伏せ（非致死・GB2）／伸長以降（致死・GB1）」を `frame` で切り替え、
+         * `h` に**現在の視覚高さ**を渡す規約（指示書 §7A）。
+         * しきい値は描画層の spearIsLethal() / spearVisualHeight() に委譲し、
+         * こちら側に同じ判定を書かない。
+         */
+        const riseStart = spearRiseStart(stage, o.def)
+        const visH = spearVisualHeight(sim.stageFrame, riseStart, o.def.rise, o.def.h)
+        obstacles.push({
+          id: o.index,
+          kind,
+          worldX: o.def.x,
+          y: stage.groundY - visH,
+          w: SPEAR_VIS_W,
+          h: visH,
+          frame: spearIsLethal(sim.stageFrame, riseStart) ? 1 : 0,
+        })
+        continue
+      }
       obstacles.push({
         id: o.index,
         kind,

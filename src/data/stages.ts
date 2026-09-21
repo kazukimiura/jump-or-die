@@ -27,11 +27,11 @@ export const STAGE_BUDGETS: Record<number, StageBudget> = {
   3: { objectCount: 23, maxChain: 2, windowMinFrames: 16, windowMaxFrames: 26, climaxAt: 0.86, climaxWarnOnly: false, tightDensity: [0.0, 0.05], suppressRatio: [0.0, 0.1], compositeRatio: [0.0, 0.1] },
   4: { objectCount: 30, maxChain: 3, windowMinFrames: 14, windowMaxFrames: 22, climaxAt: 0.91, climaxWarnOnly: false, tightDensity: [0.0, 0.05], suppressRatio: [0.0, 0.1], compositeRatio: [0.0, 0.1] },
   5: { objectCount: 34, maxChain: 3, windowMinFrames: 12, windowMaxFrames: 19, climaxAt: 0.88, climaxWarnOnly: false, tightDensity: [0.0, 0.05], suppressRatio: [0.0, 0.1], compositeRatio: [0.0, 0.1] },
-  6: { objectCount: 43, maxChain: 4, windowMinFrames: 10, windowMaxFrames: 16, climaxAt: 0.92, climaxWarnOnly: false, tightDensity: [0.05, 0.12], suppressRatio: [0.05, 0.15], compositeRatio: [0.1, 0.2] },
-  7: { objectCount: 47, maxChain: 4, windowMinFrames: 9, windowMaxFrames: 14, climaxAt: 0.89, climaxWarnOnly: false, tightDensity: [0.05, 0.12], suppressRatio: [0.05, 0.15], compositeRatio: [0.1, 0.2] },
-  8: { objectCount: 58, maxChain: 5, windowMinFrames: 7, windowMaxFrames: 11, climaxAt: 0.93, climaxWarnOnly: false, tightDensity: [0.05, 0.12], suppressRatio: [0.05, 0.15], compositeRatio: [0.1, 0.2] },
-  9: { objectCount: 72, maxChain: 5, windowMinFrames: 6, windowMaxFrames: 9, climaxAt: 0.9, climaxWarnOnly: false, tightDensity: [0.05, 0.12], suppressRatio: [0.05, 0.15], compositeRatio: [0.1, 0.2] },
-  10: { objectCount: 90, maxChain: 5, windowMinFrames: 4, windowMaxFrames: 7, climaxAt: 0.95, climaxWarnOnly: false, tightDensity: [0.05, 0.12], suppressRatio: [0.05, 0.15], compositeRatio: [0.1, 0.2] },
+  6: { objectCount: 43, maxChain: 4, windowMinFrames: 10, windowMaxFrames: 16, climaxAt: 0.92, climaxWarnOnly: false, tightDensity: [0.0, 0.12], suppressRatio: [0.05, 0.2], compositeRatio: [0.0, 0.25] },
+  7: { objectCount: 47, maxChain: 4, windowMinFrames: 9, windowMaxFrames: 14, climaxAt: 0.89, climaxWarnOnly: false, tightDensity: [0.0, 0.12], suppressRatio: [0.05, 0.2], compositeRatio: [0.0, 0.25] },
+  8: { objectCount: 58, maxChain: 5, windowMinFrames: 8, windowMaxFrames: 12, climaxAt: 0.93, climaxWarnOnly: false, tightDensity: [0.0, 0.12], suppressRatio: [0.05, 0.2], compositeRatio: [0.0, 0.25] },
+  9: { objectCount: 72, maxChain: 5, windowMinFrames: 7, windowMaxFrames: 10, climaxAt: 0.9, climaxWarnOnly: false, tightDensity: [0.0, 0.12], suppressRatio: [0.05, 0.2], compositeRatio: [0.0, 0.25] },
+  10: { objectCount: 90, maxChain: 5, windowMinFrames: 6, windowMaxFrames: 9, climaxAt: 0.95, climaxWarnOnly: false, tightDensity: [0.0, 0.12], suppressRatio: [0.05, 0.2], compositeRatio: [0.0, 0.25] },
 }
 
 // ---------------------------------------------------------------------------
@@ -176,8 +176,306 @@ const STAGE_3: StageDef = {
   ],
 }
 
+// ---------------------------------------------------------------------------
+// S4 LOW SKY — 速度 3.25 px/f / 43秒 / 8,356px
+// 新規ギミック: OB-04 天井
+// 実測（第2次バッチ）: 生存窓 17f / 最悪 17f / 誤帰属距離 0 /
+//   連鎖 2 / 狭窓密度 0.000 / 抑制率 0.100 / 複合度 0.000 /
+//   D(t) 3.64 @89.2% / クリア 2554f
+// ---------------------------------------------------------------------------
+const STAGE_4: StageDef = {
+  id: 4,
+  name: 'LOW SKY',
+  speedPxPerFrame: 3.25,
+  lengthPx: 8356,
+  safeRunwayPx: 156,
+  groundY: 148,
+  objects: [
+    { t: 'block', x: 286, w: 12, h: 16 },
+    { t: 'block', x: 501, w: 24, h: 32 },
+    { t: 'pit', x: 768, w: 48 },
+    { t: 'spike', x: 1073, n: 2 },
+    { t: 'warn', x: 1240 },
+    { t: 'ceil', x: 1370, w: 48, y: 96 },
+    { t: 'block', x: 1621, w: 12, h: 16 },
+    { t: 'ceil', x: 1849, w: 48, y: 96 },
+    { t: 'pit', x: 2140, w: 56 },
+    { t: 'spike', x: 2453, n: 3 },
+    { t: 'block', x: 2693, w: 24, h: 32 },
+    { t: 'ceil', x: 2947, w: 64, y: 96 },
+    { t: 'block', x: 3214, w: 12, h: 16 },
+    { t: 'pit', x: 3456, w: 56 },
+    { t: 'block', x: 3769, w: 12, h: 16 },
+    { t: 'spike', x: 4011, n: 2 },
+    { t: 'block', x: 4257, w: 12, h: 16 },
+    { t: 'block', x: 4499, w: 24, h: 32 },
+    { t: 'spike', x: 4753, n: 2 },
+    { t: 'pit', x: 4999, w: 56 },
+    { t: 'block', x: 5312, w: 12, h: 16 },
+    { t: 'spike', x: 5554, n: 2 },
+    { t: 'block', x: 5800, w: 12, h: 16 },
+    { t: 'block', x: 6042, w: 24, h: 32 },
+    { t: 'spike', x: 6296, n: 2 },
+    { t: 'block', x: 6542, w: 12, h: 16 },
+    { t: 'spike', x: 6784, n: 3 },
+    { t: 'block', x: 7038, w: 12, h: 16 },
+    { t: 'pit', x: 7307, w: 104 },
+    { t: 'block', x: 7668, w: 12, h: 16 },
+    { t: 'spike', x: 7872, n: 3 },
+  ],
+}
+
+// ---------------------------------------------------------------------------
+// S5 TEST I — 速度 3.5 px/f / 48秒 / 10,169px
+// 新規ギミック: 章I 章末試験（新規なし）
+// 実測（第2次バッチ）: 生存窓 14f / 最悪 14f / 誤帰属距離 0 /
+//   連鎖 2 / 狭窓密度 0.000 / 抑制率 0.086 / 複合度 0.000 /
+//   D(t) 4.24 @86.4% / クリア 2890f
+// ---------------------------------------------------------------------------
+const STAGE_5: StageDef = {
+  id: 5,
+  name: 'TEST I',
+  speedPxPerFrame: 3.5,
+  lengthPx: 10169,
+  safeRunwayPx: 168,
+  groundY: 148,
+  objects: [
+    { t: 'block', x: 308, w: 12, h: 16 },
+    { t: 'spike', x: 539, n: 2 },
+    { t: 'block', x: 789, w: 24, h: 32 },
+    { t: 'pit', x: 1061, w: 60 },
+    { t: 'block', x: 1398, w: 12, h: 16 },
+    { t: 'ceil', x: 1644, w: 48, y: 96 },
+    { t: 'spike', x: 1926, n: 3 },
+    { t: 'block', x: 2184, w: 12, h: 16 },
+    { t: 'pit', x: 2430, w: 72 },
+    { t: 'block', x: 2779, w: 24, h: 32 },
+    { t: 'spike', x: 3034, n: 2 },
+    { t: 'block', x: 3276, w: 12, h: 16 },
+    { t: 'ceil', x: 3536, w: 64, y: 96 },
+    { t: 'block', x: 3834, w: 12, h: 16 },
+    { t: 'pit', x: 4080, w: 84 },
+    { t: 'spike', x: 4441, n: 3 },
+    { t: 'block', x: 4691, w: 12, h: 16 },
+    { t: 'block', x: 4937, w: 24, h: 32 },
+    { t: 'spike', x: 5192, n: 2 },
+    { t: 'pit', x: 5442, w: 96 },
+    { t: 'block', x: 5815, w: 12, h: 16 },
+    { t: 'spike', x: 6053, n: 3 },
+    { t: 'ceil', x: 6311, w: 48, y: 96 },
+    { t: 'block', x: 6585, w: 12, h: 16 },
+    { t: 'block', x: 6831, w: 24, h: 32 },
+    { t: 'spike', x: 7086, n: 2 },
+    { t: 'pit', x: 7336, w: 104 },
+    { t: 'block', x: 7717, w: 12, h: 16 },
+    { t: 'spike', x: 7955, n: 3 },
+    { t: 'block', x: 8205, w: 12, h: 16 },
+    { t: 'block', x: 8451, w: 24, h: 32 },
+    { t: 'spike', x: 8706, n: 2 },
+    { t: 'pit', x: 8970, w: 120 },
+    { t: 'block', x: 9367, w: 12, h: 16 },
+    { t: 'spike', x: 9586, n: 3 },
+  ],
+}
+
+// ---------------------------------------------------------------------------
+// S6 FLOATING — 速度 3.75 px/f / 80秒 / 17,983px
+// 新規ギミック: OB-05 浮遊足場
+// 実測（第2次バッチ）: 生存窓 11f / 最悪 11f / 誤帰属距離 0 /
+//   連鎖 4 / 狭窓密度 0.000 / 抑制率 0.143 / 複合度 0.000 /
+//   D(t) 5.13 @89.5% / クリア 4781f
+// ---------------------------------------------------------------------------
+const STAGE_6: StageDef = {
+  id: 6,
+  name: 'FLOATING',
+  speedPxPerFrame: 3.75,
+  lengthPx: 17983,
+  safeRunwayPx: 180,
+  groundY: 148,
+  objects: [
+    { t: 'block', x: 330, w: 12, h: 16 },
+    { t: 'pit', x: 693, w: 64 },
+    { t: 'spike', x: 1201, n: 2 },
+    { t: 'block', x: 1568, w: 24, h: 32 },
+    { t: 'warn', x: 1961 },
+    { t: 'plat', x: 2179, y: 112 },
+    { t: 'block', x: 2562, w: 12, h: 16 },
+    { t: 'plat', x: 2925, y: 112 },
+    { t: 'spike', x: 3308, n: 3 },
+    { t: 'plat', x: 3683, y: 104 },
+    { t: 'block', x: 4066, w: 12, h: 16 },
+    { t: 'ceil', x: 4429, w: 48, y: 96 },
+    { t: 'ceil', x: 5016, w: 48, y: 96 },
+    { t: 'pit', x: 5439, w: 121 },
+    { t: 'block', x: 6004, w: 12, h: 16 },
+    { t: 'plat', x: 6367, y: 104 },
+    { t: 'spike', x: 6750, n: 2 },
+    { t: 'block', x: 7117, w: 24, h: 32 },
+    { t: 'ceil', x: 7510, w: 64, y: 96 },
+    { t: 'ceil', x: 8113, w: 48, y: 96 },
+    { t: 'block', x: 8512, w: 12, h: 16 },
+    { t: 'pit', x: 8899, w: 121 },
+    { t: 'plat', x: 9464, y: 96 },
+    { t: 'spike', x: 9847, n: 3 },
+    { t: 'block', x: 10210, w: 12, h: 16 },
+    { t: 'block', x: 10573, w: 24, h: 32 },
+    { t: 'spike', x: 10966, n: 2 },
+    { t: 'plat', x: 11333, y: 104 },
+    { t: 'ceil', x: 11716, w: 48, y: 96 },
+    { t: 'ceil', x: 12303, w: 48, y: 96 },
+    { t: 'block', x: 12702, w: 12, h: 16 },
+    { t: 'pit', x: 13089, w: 121 },
+    { t: 'spike', x: 13654, n: 3 },
+    { t: 'block', x: 14017, w: 12, h: 16 },
+    { t: 'block', x: 14380, w: 24, h: 32 },
+    { t: 'plat', x: 14773, y: 112 },
+    { t: 'spike', x: 15156, n: 2 },
+    { t: 'block', x: 15511, w: 12, h: 16 },
+    { t: 'pit', x: 15898, w: 140 },
+    { t: 'spike', x: 16334, n: 3 },
+    { t: 'block', x: 16545, w: 12, h: 16 },
+    { t: 'spike', x: 16779, n: 2 },
+    { t: 'block', x: 16982, w: 12, h: 16 },
+  ],
+}
+
+// ---------------------------------------------------------------------------
+// S7 THE LIFT — 速度 4 px/f / 79秒 / 18,879px
+// 新規ギミック: OB-07 昇降 / OB-10 バネ
+// 実測（第2次バッチ）: 生存窓 11f / 最悪 11f / 誤帰属距離 0 /
+//   連鎖 2 / 狭窓密度 0.000 / 抑制率 0.116 / 複合度 0.058 /
+//   D(t) 5.32 @89.5% / クリア 4706f
+// ---------------------------------------------------------------------------
+const STAGE_7: StageDef = {
+  id: 7,
+  name: 'THE LIFT',
+  speedPxPerFrame: 4,
+  lengthPx: 18879,
+  safeRunwayPx: 192,
+  groundY: 148,
+  objects: [
+    { t: 'block', x: 352, w: 12, h: 16 },
+    { t: 'pit', x: 684, w: 72 },
+    { t: 'spike', x: 1184, n: 2 },
+    { t: 'plat', x: 1516, y: 112 },
+    { t: 'warn', x: 1887 },
+    { t: 'lift', x: 2098, y: 132, amp: 24, period: 90, phase: 0 },
+    { t: 'block', x: 2453, w: 12, h: 16 },
+    { t: 'lift', x: 2785, y: 132, amp: 24, period: 90, phase: 30 },
+    { t: 'spike', x: 3140, n: 3 },
+    { t: 'warn', x: 3416 },
+    { t: 'spring', x: 3627 },
+    { t: 'block', x: 3978, w: 12, h: 16 },
+    { t: 'spring', x: 4310 },
+    { t: 'ceil', x: 4661, w: 48, y: 96 },
+    { t: 'ceil', x: 5183, w: 48, y: 96 },
+    { t: 'block', x: 5547, w: 24, h: 32 },
+    { t: 'lift', x: 5927, y: 124, amp: 32, period: 100, phase: 0 },
+    { t: 'ceil', x: 6282, w: 48, y: 96 },
+    { t: 'lift', x: 6646, y: 124, amp: 32, period: 100, phase: 50 },
+    { t: 'block', x: 7001, w: 12, h: 16 },
+    { t: 'pit', x: 7352, w: 130 },
+    { t: 'plat', x: 7910, y: 104 },
+    { t: 'spike', x: 8281, n: 2 },
+    { t: 'spring', x: 8613 },
+    { t: 'block', x: 8941, w: 12, h: 16 },
+    { t: 'ceil', x: 9280, w: 64, y: 96 },
+    { t: 'lift', x: 9660, y: 132, amp: 24, period: 80, phase: 20 },
+    { t: 'spike', x: 10015, n: 3 },
+    { t: 'block', x: 10343, w: 12, h: 16 },
+    { t: 'pit', x: 10694, w: 130 },
+    { t: 'block', x: 11252, w: 24, h: 32 },
+    { t: 'spike', x: 11632, n: 2 },
+    { t: 'plat', x: 11964, y: 112 },
+    { t: 'block', x: 12335, w: 12, h: 16 },
+    { t: 'ceil', x: 12674, w: 48, y: 96 },
+    { t: 'lift', x: 13038, y: 124, amp: 32, period: 90, phase: 40 },
+    { t: 'pit', x: 13393, w: 130 },
+    { t: 'spike', x: 13951, n: 3 },
+    { t: 'block', x: 14279, w: 12, h: 16 },
+    { t: 'block', x: 14611, w: 24, h: 32 },
+    { t: 'spring', x: 14991 },
+    { t: 'block', x: 15319, w: 12, h: 16 },
+    { t: 'spike', x: 15651, n: 2 },
+    { t: 'pit', x: 16006, w: 130 },
+    { t: 'block', x: 16564, w: 12, h: 16 },
+    { t: 'block', x: 16813, w: 24, h: 32 },
+    { t: 'pit', x: 17101, w: 150 },
+    { t: 'block', x: 17568, w: 12, h: 16 },
+    { t: 'spike', x: 17817, n: 3 },
+  ],
+}
+
+// ---------------------------------------------------------------------------
+// S8 FIRST WINGS — 速度 4.25 px/f / 80秒 / 20,504px
+// 新規ギミック: OB-08 飛行体（vx=1.0）
+// 実測（第2次バッチ）: 生存窓 11f / 最悪 11f / 誤帰属距離 0 /
+//   連鎖 2 / 狭窓密度 0.000 / 抑制率 0.191 / 複合度 0.074 /
+//   D(t) 5.09 @89.9% / クリア 4812f
+// ---------------------------------------------------------------------------
+const STAGE_8: StageDef = {
+  id: 8,
+  name: 'FIRST WINGS',
+  speedPxPerFrame: 4.25,
+  lengthPx: 20504,
+  safeRunwayPx: 204,
+  groundY: 148,
+  objects: [
+    { t: 'block', x: 374, w: 12, h: 16 },
+    { t: 'pit', x: 737, w: 80 },
+    { t: 'spike', x: 1287, n: 2 },
+    { t: 'plat', x: 1638, y: 112 },
+    { t: 'warn', x: 2042 },
+    { t: 'fly', x: 2273, alt: 'MID', vx: 1 },
+    { t: 'block', x: 2620, w: 12, h: 16 },
+    { t: 'fly', x: 2983, alt: 'MID', vx: 1 },
+    { t: 'spike', x: 3317, n: 3 },
+    { t: 'fly', x: 3676, alt: 'HIGH', vx: 1 },
+    { t: 'block', x: 4023, w: 24, h: 32 },
+    { t: 'lift', x: 4439, y: 132, amp: 24, period: 90, phase: 0 },
+    { t: 'ceil', x: 4827, w: 48, y: 96 },
+    { t: 'pit', x: 5235, w: 138 },
+    { t: 'block', x: 5843, w: 12, h: 16 },
+    { t: 'spring', x: 6206 },
+    { t: 'fly', x: 6553, alt: 'MID', vx: 1 },
+    { t: 'ceil', x: 6912, w: 48, y: 96 },
+    { t: 'spike', x: 7282, n: 2 },
+    { t: 'plat', x: 7633, y: 104 },
+    { t: 'pit', x: 8037, w: 138 },
+    { t: 'block', x: 8645, w: 12, h: 16 },
+    { t: 'block', x: 9008, w: 24, h: 32 },
+    { t: 'lift', x: 9424, y: 124, amp: 32, period: 100, phase: 40 },
+    { t: 'fly', x: 9812, alt: 'HIGH', vx: 1 },
+    { t: 'spike', x: 10146, n: 3 },
+    { t: 'block', x: 10492, w: 12, h: 16 },
+    { t: 'ceil', x: 10855, w: 64, y: 96 },
+    { t: 'plat', x: 11254, y: 112 },
+    { t: 'spike', x: 11658, n: 2 },
+    { t: 'pit', x: 12034, w: 138 },
+    { t: 'spring', x: 12642 },
+    { t: 'block', x: 12989, w: 12, h: 16 },
+    { t: 'fly', x: 13352, alt: 'MID', vx: 1 },
+    { t: 'block', x: 13699, w: 24, h: 32 },
+    { t: 'spike', x: 14115, n: 3 },
+    { t: 'block', x: 14461, w: 12, h: 16 },
+    { t: 'lift', x: 14824, y: 132, amp: 24, period: 80, phase: 20 },
+    { t: 'ceil', x: 15212, w: 48, y: 96 },
+    { t: 'plat', x: 15595, y: 104 },
+    { t: 'pit', x: 15999, w: 138 },
+    { t: 'spike', x: 16607, n: 2 },
+    { t: 'block', x: 16945, w: 12, h: 16 },
+    { t: 'block', x: 17308, w: 24, h: 32 },
+    { t: 'fly', x: 17724, alt: 'MID', vx: 1 },
+    { t: 'block', x: 18058, w: 12, h: 16 },
+    { t: 'spike', x: 18321, n: 3 },
+    { t: 'pit', x: 18602, w: 159 },
+    { t: 'block', x: 19097, w: 12, h: 16 },
+    { t: 'spike', x: 19360, n: 2 },
+  ],
+}
+
 /** 本幕で実装するステージ（S1〜S3）。S4〜S10 はここへ追加するだけで拡張できる */
-export const STAGES: StageDef[] = [STAGE_1, STAGE_2, STAGE_3]
+export const STAGES: StageDef[] = [STAGE_1, STAGE_2, STAGE_3, STAGE_4, STAGE_5, STAGE_6, STAGE_7, STAGE_8]
 
 export function getStage(id: number): StageDef | undefined {
   return STAGES.find((s) => s.id === id)

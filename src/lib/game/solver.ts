@@ -253,7 +253,21 @@ function stateKey(sim: SimState): string {
     coyote +
     '|' +
     (p.supportIndex === null ? 'n' : p.supportIndex)
-  if (sim.crumbleTrigger.length > 0) k += '|' + sim.crumbleTrigger.join(',')
+  if (sim.crumbleTrigger.length > 0) {
+    /*
+     * 崩落床は**起動フレームそのものではなく、起動からの経過**だけが挙動を決める。
+     * 生の trigger を鍵に入れると、同じ見た目の状態が起動時刻の数だけ別状態になり、
+     * 状態数が組み合わせ的に爆発する（S9 で 400 万超）。
+     * delay(10) + 落下(12) = 22 フレームで完全に消えるので、
+     * それ以降はすべて同一視して 1 個の状態に畳む。
+     */
+    let c = '|'
+    for (const t of sim.crumbleTrigger) {
+      c += t < 0 ? 'n' : Math.min(sim.stageFrame - t, 24)
+      c += ','
+    }
+    k += c
+  }
   return k
 }
 
@@ -298,30 +312,75 @@ class Search {
     return next
   }
 
-  /** 状態 s からゴールまでの最小タップ数。Infinity なら勝利領域 W の外 */
+  /**
+   * 状態 s からゴールまでの最小タップ数。Infinity なら勝利領域 W の外。
+   *
+   * **再帰ではなく反復で解く。** `stageFrame` は必ず増加するので状態遷移グラフは DAG であり、
+   * 「frame の昇順に集めて、降順に評価する」だけでトポロジカル順序になる。
+   * 再帰にすると深さがステージのフレーム数と同じになり、
+   * 長いステージ（S9 以降は 3,000〜5,000 フレーム）でコールスタックが溢れる。
+   */
   minTaps(sim: SimState): number {
     if (sim.cleared) return 0
     if (sim.dead) return INF
     if (sim.stageFrame > this.maxFrame) return INF
-
-    const key = stateKey(sim)
-    const hit = this.memoTaps.get(key)
+    const rootKey = stateKey(sim)
+    const hit = this.memoTaps.get(rootKey)
     if (hit !== undefined) return hit
-    if (this.memoTaps.size > MAX_STATES) {
-      throw new Error(
-        `solver: 状態数が上限 ${MAX_STATES} を超えました（stage ${this.stage.id}）`,
-      )
-    }
-    this.memoTaps.set(key, INF)
 
-    let best = this.minTaps(this.advance(sim, false))
-    if (canJumpNow(sim.stageFrame, sim.player)) {
-      const t = this.minTaps(this.advance(sim, true))
-      if (t !== INF && t + 1 < best) best = t + 1
+    // 1) 前方探索で未評価の到達状態を frame ごとに集める
+    const byFrame = new Map<number, { sim: SimState; key: string }[]>()
+    const seen = new Set<string>([rootKey])
+    let queue: { sim: SimState; key: string }[] = [{ sim, key: rootKey }]
+    const push = (f: number, e: { sim: SimState; key: string }) => {
+      const a = byFrame.get(f)
+      if (a) a.push(e)
+      else byFrame.set(f, [e])
+    }
+    while (queue.length > 0) {
+      const next: { sim: SimState; key: string }[] = []
+      for (const e of queue) {
+        push(e.sim.stageFrame, e)
+        if (this.memoTaps.size + seen.size > MAX_STATES) {
+          throw new Error(
+            `solver: 状態数が上限 ${MAX_STATES} を超えました（stage ${this.stage.id}）`,
+          )
+        }
+        const kids: SimState[] = [this.advance(e.sim, false)]
+        if (canJumpNow(e.sim.stageFrame, e.sim.player)) kids.push(this.advance(e.sim, true))
+        for (const k of kids) {
+          if (k.cleared || k.dead || k.stageFrame > this.maxFrame) continue
+          const kk = stateKey(k)
+          if (this.memoTaps.has(kk) || seen.has(kk)) continue
+          seen.add(kk)
+          next.push({ sim: k, key: kk })
+        }
+      }
+      queue = next
     }
 
-    this.memoTaps.set(key, best)
-    return best
+    // 2) frame の降順に評価する（後続は必ず評価済みになる）
+    const frames = [...byFrame.keys()].sort((a, b) => b - a)
+    for (const f of frames) {
+      for (const e of byFrame.get(f)!) {
+        if (this.memoTaps.has(e.key)) continue
+        let best = this.valueOf(this.advance(e.sim, false))
+        if (canJumpNow(e.sim.stageFrame, e.sim.player)) {
+          const t = this.valueOf(this.advance(e.sim, true))
+          if (t !== INF && t + 1 < best) best = t + 1
+        }
+        this.memoTaps.set(e.key, best)
+      }
+    }
+    return this.memoTaps.get(rootKey) ?? INF
+  }
+
+  /** 評価済みの値を引く。基底（ゴール・死亡・フレーム超過）はその場で返す */
+  private valueOf(s: SimState): number {
+    if (s.cleared) return 0
+    if (s.dead) return INF
+    if (s.stageFrame > this.maxFrame) return INF
+    return this.memoTaps.get(stateKey(s)) ?? INF
   }
 
   /** 勝利領域 W に属するか */
