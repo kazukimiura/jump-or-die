@@ -40,6 +40,7 @@ import {
 import type { ResolvedObj, SimState, StageDef } from '@/lib/game/types'
 import { STAGES, getStage } from '@/data/stages'
 import type {
+  ExitPromptPhase,
   RenderObstacle,
   RenderObstacleKind,
   RenderPhase,
@@ -47,6 +48,8 @@ import type {
   RenderSelectEntry,
   RenderState,
 } from '@/lib/render/renderState'
+// 離脱導線のしきい値は描画層に一元化されている（透B・改訂R9）。二重管理しない
+import { exitPromptPhaseOf, exitTapRegion, isExitTapAccepted } from '@/lib/render/draw'
 import {
   MERCY_DEATHS,
   MARKS_KEEP,
@@ -194,13 +197,6 @@ const HIT_SELECT_CARDS: readonly HitRect[] = [
  * 死亡後 `READY` の離脱導線 `← STAGES`（GDD §14-16-3 アイドル顕在化）。
  * 描画は HUD 帯左端の 56×12px（`ST nn` と差し替え・透B担当）。
  */
-const EXIT_REVEAL_IDLE = 90 // 1.5 秒タップが無いと現れはじめる
-const EXIT_REVEAL_FADE = 18 // フェードイン 300ms。**完了後のみ**タップを受け付ける
-const EXIT_DRAW_W = 56
-const EXIT_DRAW_H = 12
-/** 判定領域の最低サイズ（CSS px）。論理 12px は等倍表示では指で押せない */
-const EXIT_MIN_CSS = 44
-
 /** RESULT の `RETRY`（描画は 8,168 F3X5） */
 const HIT_RESULT_RETRY: HitRect = { x: 0, y: 158, w: 76, h: 22 }
 /** RESULT の `STAGES`（描画は右寄せ 312,168） */
@@ -587,40 +583,28 @@ function unlockNext(app: App, id: number): boolean {
 }
 
 /**
- * 離脱導線 `← STAGES` の顕在度 0–1（GDD §14-16-3）。
- * 0 = 描かない / 0〜1 = フェードイン中（描画層はディザ2段で表現・アルファ合成は使わない）
- * / 1 = 顕在。**タップを受け付けるのは 1 のときだけ。**
+ * 離脱導線 `← STAGES` の表示段階（GDD §14-16-3 / 描画層 改訂R9）。
+ *
+ * **死亡後の `READY` でしか顕在化しない。** `RUNNING` 中・ポーズ中・ステージ入場直後の
+ * `READY` では常に `HIDDEN` を返す。しきい値（90f / 6f刻み / +18f で受付）は
+ * 描画層の `exitPromptPhaseOf()` に一元化されており、ここでは持たない。
  */
-export function exitReveal(app: App): number {
-  if (app.phase !== 'READY' || app.paused || !app.death) return 0
-  if (app.readyIdle < EXIT_REVEAL_IDLE) return 0
-  // 90f 目を 1/18（ディザ第1段）とし、18 フレームかけて 107f で描画が完成する
-  const t = app.readyIdle - EXIT_REVEAL_IDLE + 1
-  return Math.min(1, t / EXIT_REVEAL_FADE)
+export function exitPhase(app: App): ExitPromptPhase {
+  if (app.phase !== 'READY' || app.paused || !app.death) return 'HIDDEN'
+  return exitPromptPhaseOf(app.readyIdle)
 }
 
-/**
- * フェードイン完了後のみ操作できる。
- * 描画の完成（107f）より 1 フレーム遅らせて 108f（= 90 + 18）から受け付ける。
- * 「フェードイン完了後のみ」を厳密に満たすための安全側のマージン。
- */
+/** フェードイン完了後の猶予（6f）まで進んだ段階でのみ操作できる */
 export function exitTappable(app: App): boolean {
-  return (
-    app.phase === 'READY' &&
-    !app.paused &&
-    app.death !== null &&
-    app.readyIdle >= EXIT_REVEAL_IDLE + EXIT_REVEAL_FADE
-  )
+  return isExitTapAccepted(exitPhase(app))
 }
 
 /**
- * 離脱導線のタップ判定領域（論理座標）。
- * キャンバス左上を起点に**最低 44×44 CSS px**を確保し、描画領域 56×12px を内包する。
- * タイミング要求がゼロの場面なので、判定を描画より広げても副作用は無い。
+ * 離脱導線のタップ判定領域（論理座標）。描画（56×12px）より広く、
+ * どの整数倍スケールでも 44×44 CSS px 以上になる。矩形の算出は描画層に委ねる。
  */
 export function exitHitRect(app: App): { x: number; y: number; w: number; h: number } {
-  const min = EXIT_MIN_CSS / Math.max(1, app.viewScale)
-  return { x: 0, y: 0, w: Math.max(EXIT_DRAW_W, min), h: Math.max(EXIT_DRAW_H, min) }
+  return exitTapRegion(app.viewScale)
 }
 
 /** 整数倍スケールが変わったら知らせる（判定領域の CSS px 換算に使う） */
@@ -782,6 +766,7 @@ export function buildRenderState(app: App): RenderState {
     readyMessage: app.phase === 'READY' && !app.paused ? app.readyMessage : null,
     readyUnlock: app.phase === 'READY' && !app.paused ? app.readyUnlock : null,
     banner: app.banner ? { text: app.banner.text } : null,
+    exitPrompt: exitPhase(app),
 
     title: isTitle
       ? {
