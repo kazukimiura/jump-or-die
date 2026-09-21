@@ -41,6 +41,46 @@ export type FlyObj = { t: 'fly'; x: number; alt: FlyAltitude; vx: number }
 export type CrumbleObj = { t: 'crumble'; x: number; y: number; delay: number }
 /** OB-10 バネ。12x8。上面接触で強制ジャンプ（非致死） */
 export type SpringObj = { t: 'spring'; x: number }
+/**
+ * OB-11 横振りブロック（G1「障害物が動く」・GDD §15-2）。
+ * 16x16。判定は `block` と同一（上面に着地可・側面は死）。
+ * 運動は **三角波・等速**: `X(f) = x + amp * tri((f + phase) / period)`。
+ * 正弦波にすると端で速度が落ち「どこで止まって見えるか」を別途覚える必要が生じる。
+ * 覚えるべきものを増やさないため等速を採る。
+ */
+export type SwingObj = {
+  t: 'swing'
+  x: number
+  y: number
+  /** 振幅 8〜48 px */
+  amp: number
+  /** 周期 60〜180 f */
+  period: number
+  /** 位相オフセット f */
+  phase: number
+}
+
+/**
+ * OB-14 槍（G4「飛び越えようとしたら飛び出してくる」・GDD §15-5）。
+ *
+ * ジャンプの頂点よりやや低い高さを最大とし、**ジャストタイミングなら越えられる**。
+ * 視覚幅 6px に対し判定幅 4px、視覚頂点より 2px 下を判定上端とする（§4-3 のトゲと同思想）。
+ *
+ * **トリガーは `cameraX`（= stageFrame x 速度）のみを参照する。**
+ * プレイヤーの位置・速度・入力・状態を一切参照してはならない（憲法2 / §15-5-4【P0】）。
+ */
+export type SpearObj = {
+  t: 'spear'
+  /** 基部のワールドX */
+  x: number
+  /** 最大高（視覚）。40 <= h <= 54 */
+  h: number
+  /** カメラXがこの値を超えたフレームから伸長開始 */
+  triggerX: number
+  /** 伸長フレーム数。6 <= rise <= 20（既定 8 = 133ms） */
+  rise: number
+}
+
 /** 予告マーカー（GDD §7-3 ルールB）。当たり判定を持たない描画専用 */
 export type WarnObj = { t: 'warn'; x: number }
 
@@ -54,6 +94,8 @@ export type ObjDef =
   | FlyObj
   | CrumbleObj
   | SpringObj
+  | SwingObj
+  | SpearObj
   | WarnObj
 
 export type ObjKind = ObjDef['t']
@@ -97,6 +139,12 @@ export type StageBudget = {
   climaxAt: number
   /** クライマックス検査を警告扱いにするか（S1 のみ true。GDD §14-④） */
   climaxWarnOnly: boolean
+  /** 狭窓密度の帯（GDD §15-7-3 / §15-7-4）。生存窓 10f 以下の本数 / ステージ長(秒) */
+  tightDensity: readonly [number, number]
+  /** 抑制率の帯。跳んではいけない障害物の数 / 全挑戦オブジェクト数 */
+  suppressRatio: readonly [number, number]
+  /** 複合度の帯（警告のみ）。複合パターン区間の長さ合計 / ステージ長 */
+  compositeRatio: readonly [number, number]
 }
 
 // ---------------------------------------------------------------------------

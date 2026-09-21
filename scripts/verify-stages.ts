@@ -79,6 +79,11 @@ for (const stage of STAGES) {
       `  [7] 最大チェイン長 : ${s.maxChain}  [上限 ${budget.maxChain}] / 息継ぎ違反 ${s.breathViolations.length} 件`,
     )
     console.log(
+      `  [10-12] 狭窓密度 ${s.tightDensity.toFixed(3)} [帯 ${budget.tightDensity.join('〜')}] / ` +
+        `抑制率 ${s.suppressRatio.toFixed(3)} [帯 ${budget.suppressRatio.join('〜')}] / ` +
+        `複合度 ${s.compositeRatio.toFixed(3)} [帯 ${budget.compositeRatio.join('〜')}]`,
+    )
+    console.log(
       `  [9] クライマックス : D(t)max=${s.climaxD.toFixed(2)} @ ${pc(s.climaxAt)}  [帯 85.0〜95.0%${budget.climaxWarnOnly ? ' / S1 は警告のみ' : ''}]`,
     )
     console.log(

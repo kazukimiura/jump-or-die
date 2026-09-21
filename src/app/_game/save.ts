@@ -41,14 +41,24 @@ export interface StageRecord {
 }
 
 export interface SaveData {
-  /** スキーマバージョン。将来の移行用 */
-  v: 1
+  /** スキーマバージョン。移行は `migrate()` が担う */
+  v: SaveVersion
   stages: Record<string, StageRecord>
   total: { die: number; playMs: number }
   /** 最後にプレイしたステージ */
   last: number
   opt: { sfx: boolean; reducedFlash: boolean }
 }
+
+/** 現行スキーマバージョン（GDD §15-9-3 で v1 → v2 へ移行） */
+export const SAVE_VERSION = 2
+export type SaveVersion = 2
+
+/**
+ * 総ステージ数（GDD §15-6 の6章×5本）。
+ * v2 移行時に 4..30 を初期状態で追加する。
+ */
+export const TOTAL_STAGES = 30
 
 /** 直近の死亡マーカーの保持数（GDD §10-2 marks） */
 export const MARKS_KEEP = 5
@@ -62,7 +72,7 @@ export function emptyStageRecord(unlock = false): StageRecord {
 /** 初期状態。ステージ1だけ解放されている */
 export function defaultSave(): SaveData {
   return {
-    v: 1,
+    v: SAVE_VERSION,
     stages: { '1': emptyStageRecord(true) },
     total: { die: 0, playMs: 0 },
     last: 1,
@@ -103,8 +113,31 @@ function parseStage(raw: unknown): StageRecord {
 }
 
 /**
+ * v1 → v2 の移行（GDD §15-9-3【P0】）。
+ *
+ * **本作は既に公開済みで、遊んでいる人の localStorage に v1 のセーブが存在する。**
+ * キー `jumpordie.save.v1` は変えない（変えると旧データが孤児になる）。
+ * 中身の `v` だけを 2 に上げ、S1〜S3 の記録を必ず引き継ぐ。
+ *
+ * - `stages` に入っている記録は**そのまま全部引き継ぐ**（1..3 に限らない）
+ * - `stages` 4..30 を初期状態で追加する
+ * - `total` / `last` / `opt` はそのまま引き継ぐ
+ * - **v2 に対しては何もしない**（二重移行の防止）
+ */
+function migrate(stages: Record<string, StageRecord>): Record<string, StageRecord> {
+  for (let id = 1; id <= TOTAL_STAGES; id++) {
+    const key = String(id)
+    if (!stages[key]) stages[key] = emptyStageRecord(id === 1)
+  }
+  return stages
+}
+
+/**
  * 読み込み。**どんな入力でも例外を投げない。**
- * 未知のスキーマバージョン・壊れた JSON・storage 不在はすべて初期状態にフォールバックする。
+ *
+ * 壊れた JSON・想定外の構造・未知のスキーマバージョン・storage 不在は
+ * すべて初期状態にフォールバックする。ただし **v1 は捨てずに移行する**。
+ * セーブが読めないことでゲームが起動しないのは論外（GDD §10-2）。
  */
 export function loadSave(storage: StorageLike | null): SaveData {
   const fresh = defaultSave()
@@ -119,28 +152,33 @@ export function loadSave(storage: StorageLike | null): SaveData {
 
   try {
     const raw = JSON.parse(text) as Record<string, unknown>
-    if (num(raw.v, 0) !== 1) return fresh
+    const version = num(raw.v, 0)
+    // 1（旧）と 2（現行）だけを受け付ける。未知のバージョンは初期状態で起動する
+    if (version !== 1 && version !== SAVE_VERSION) return fresh
 
     const stages: Record<string, StageRecord> = {}
     const rawStages = (raw.stages ?? {}) as Record<string, unknown>
-    for (const key of Object.keys(rawStages)) {
-      const id = Number(key)
-      if (!Number.isInteger(id) || id < 1 || id > 10) continue
-      stages[key] = parseStage(rawStages[key])
+    if (rawStages && typeof rawStages === 'object') {
+      for (const key of Object.keys(rawStages)) {
+        const id = Number(key)
+        if (!Number.isInteger(id) || id < 1 || id > TOTAL_STAGES) continue
+        stages[key] = parseStage(rawStages[key])
+      }
     }
-    if (!stages['1']) stages['1'] = emptyStageRecord(true)
+    // v1 でも v2 でも、欠けているステージは初期状態で埋める（移行は冪等）
+    migrate(stages)
     stages['1'].unlock = true
 
     const rawTotal = (raw.total ?? {}) as Record<string, unknown>
     const rawOpt = (raw.opt ?? {}) as Record<string, unknown>
     return {
-      v: 1,
+      v: SAVE_VERSION,
       stages,
       total: {
         die: Math.max(0, Math.floor(num(rawTotal.die, 0))),
         playMs: Math.max(0, Math.floor(num(rawTotal.playMs, 0))),
       },
-      last: Math.max(1, Math.min(10, Math.floor(num(raw.last, 1)))),
+      last: Math.max(1, Math.min(TOTAL_STAGES, Math.floor(num(raw.last, 1)))),
       opt: {
         sfx: bool(rawOpt.sfx, true),
         reducedFlash: bool(rawOpt.reducedFlash, false),

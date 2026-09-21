@@ -38,12 +38,14 @@ export function spansOverlap(
   return aLeft < bRight && aRight > bLeft
 }
 
-/** 種別ごとの判定の内側マージン（GDD §4-3） */
+/** 種別ごとの判定の内側マージン（GDD §4-3 / §15-5） */
 export function insetOf(kind: ObjKind): number {
   // トゲ・飛行体は 2px。三角形/動体は見た目より甘くする
-  return kind === 'spike' || kind === 'fly'
-    ? OBSTACLE_INSET_SHARP
-    : OBSTACLE_INSET
+  if (kind === 'spike' || kind === 'fly') return OBSTACLE_INSET_SHARP
+  // 槍は解決時点で既に甘くしてある（視覚6px→判定4px / 頂点より2px下）。
+  // ここで更に削ると二重に甘くなるので 0
+  if (kind === 'spear') return 0
+  return OBSTACLE_INSET
 }
 
 /**

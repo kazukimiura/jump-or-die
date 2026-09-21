@@ -64,6 +64,24 @@ import {
   PLAT_W,
   PLAYER_HITBOX_OX,
   PLAYER_HITBOX_W,
+  SPEAR_H_MAX,
+  SPEAR_H_MIN,
+  SPEAR_RISE_MAX,
+  SPEAR_RISE_MIN,
+  SWING_AMP_MAX,
+  SWING_AMP_MIN,
+  SWING_PERIOD_MAX,
+  SWING_PERIOD_MIN,
+  TIGHT_WINDOW_FRAMES,
+  WALL_MIN_H,
+  WALL_STEP_HEADROOM,
+  WALL_STEP_MIN_GROUND_FRAMES,
+  FLY_LOOKAHEAD_MIN_FRAMES,
+  FLY_LOOKAHEAD_WARN_FRAMES,
+  FLY_VX_MAX,
+  FLY_VX_MIN,
+  JUMP_APEX_FRAMES,
+  LOOKAHEAD_PX,
   WORST_WINDOW_WARN,
 } from './constants'
 import { killRect } from './collision'
@@ -187,6 +205,12 @@ export type SolveResult = {
   maxChain: number
   /** 息継ぎ規定の違反地点（到達率） */
   breathViolations: number[]
+  /** 狭窓密度: 生存窓 10f 以下のジャンプ本数 / ステージ長(秒)（GDD §15-7-3） */
+  tightDensity: number
+  /** 抑制率: 跳んではいけない障害物の数 / 全挑戦オブジェクト数 */
+  suppressRatio: number
+  /** 複合度: 複合パターン区間の長さ合計 / ステージ長（警告のみ） */
+  compositeRatio: number
   /** 区間難度 D(t) の最大値 */
   climaxD: number
   /** クライマックス（D(t) 最大区間の中心）の到達率 */
@@ -677,11 +701,14 @@ function onIntendedSide(o: ResolvedObj, playerY: number, groundY: number): boole
   const r = gapRect(o)
   switch (o.kind) {
     // 上を越えた／上面に乗った（上面着地は必ずカウントする。S2・S3 の遅延死がこの形）
+    // swing / spear も地上型（GDD §15-10-1）。動体は毎フレームの位置で解く
     case 'block':
     case 'lift':
     case 'spike':
     case 'plat':
     case 'crumble':
+    case 'swing':
+    case 'spear':
       return lethalBottom(playerY) <= r.y
     /*
      * 穴に沈んでいない。
@@ -720,6 +747,8 @@ function overlappingChallenges(
   // 動体もこのフレームの位置で解決される
   for (const o of resolveObjectsInRange(stage, sim.stageFrame, left - 128, right + 128, sim)) {
     if (!isChallenge(o.kind)) continue
+    // 槍は伸長が始まっていない間は挑戦が成立していない（GDD §15-10-1）
+    if (o.kind === 'spear' && !o.lethal) continue
     const r = gapRect(o)
     if (right <= r.x || left >= r.x + r.w) continue
     out.push({ index: o.index, ok: onIntendedSide(o, sim.player.y, stage.groundY) })
@@ -942,6 +971,9 @@ export function solveStage(stage: StageDef): SolveResult {
     ctrlHits: [],
     maxChain: 0,
     breathViolations: [],
+    tightDensity: 0,
+    suppressRatio: 0,
+    compositeRatio: 0,
     climaxD: 0,
     climaxAt: 0,
     statesExplored: search.states,
@@ -981,6 +1013,7 @@ export function solveStage(stage: StageDef): SolveResult {
 
   const scan = scanReachable(search, stage)
   const climax = climaxOf(stage, mm.route, goalFrame(stage))
+  const metrics = stageMetrics(stage, mm.route)
 
   return {
     feasible: true,
@@ -998,11 +1031,66 @@ export function solveStage(stage: StageDef): SolveResult {
     ctrlHits: scan.ctrlHits,
     maxChain,
     breathViolations,
+    tightDensity: metrics.tightDensity,
+    suppressRatio: metrics.suppressRatio,
+    compositeRatio: metrics.compositeRatio,
     climaxD: climax.d,
     climaxAt: climax.at,
     statesExplored: search.states,
     arrivalsAnalyzed: search.arrivals,
   }
+}
+
+// ---------------------------------------------------------------------------
+// 新指標（GDD §15-7-3）
+// ---------------------------------------------------------------------------
+
+/**
+ * 速度と平均タップ密度は S10 でほぼ上限に達する（理論上限 1.44 タップ/秒）。
+ * S11 以降の難化は「窓を狭める」のではなく「狭い箇所を増やす」ことで行うため、
+ * それを測る指標を3つ持つ（§15-7-2）。
+ */
+function stageMetrics(
+  stage: StageDef,
+  route: RouteJump[],
+): { tightDensity: number; suppressRatio: number; compositeRatio: number } {
+  const seconds = stage.lengthPx / stage.speedPxPerFrame / 60
+
+  // 狭窓密度: 生存窓 10f 以下のジャンプ本数 / ステージ長(秒)
+  const tight = route.filter((j) => j.window <= TIGHT_WINDOW_FRAMES).length
+  const tightDensity = seconds > 0 ? tight / seconds : 0
+
+  // 抑制率: 「跳んではいけない障害物」の数 / 全挑戦オブジェクト数
+  // 跳んではいけないもの = 天井（くぐる）と MID 高度の飛行体（立ったまま通す）
+  const challenges = stage.objects.filter((o) => isChallenge(o.t))
+  const suppress = challenges.filter(
+    (o) => o.t === 'ceil' || (o.t === 'fly' && o.alt === 'MID'),
+  ).length
+  const suppressRatio = challenges.length > 0 ? suppress / challenges.length : 0
+
+  // 複合度: 複合パターン（P-B くぐり抜け / P-F 位相 / P-G 全部 / P-H 位相群）に
+  // 該当する区間の長さ合計 / ステージ長。
+  // 該当区間は「動体・天井を含む障害物が 2.0 秒窓の中に 2 つ以上ある」範囲とする
+  const span = stage.speedPxPerFrame * 60 * 2.0
+  const marks = challenges
+    .filter((o) => o.t === 'ceil' || o.t === 'fly' || o.t === 'lift' || o.t === 'swing' || o.t === 'spear')
+    .map((o) => o.x)
+    .sort((a, b) => a - b)
+  let covered = 0
+  let i = 0
+  while (i < marks.length) {
+    let j = i
+    while (j + 1 < marks.length && marks[j + 1] - marks[i] <= span) j++
+    if (j > i) {
+      covered += marks[j] - marks[i]
+      i = j + 1
+    } else {
+      i++
+    }
+  }
+  const compositeRatio = stage.lengthPx > 0 ? covered / stage.lengthPx : 0
+
+  return { tightDensity, suppressRatio, compositeRatio }
 }
 
 // ---------------------------------------------------------------------------
@@ -1039,6 +1127,79 @@ function landableIntervals(stage: StageDef): { x: number; end: number }[] {
     else merged.push({ ...r })
   }
   return merged
+}
+
+/**
+ * G2 WALL の幾何規定 W1〜W5（GDD §15-3）。
+ *
+ * `h >= 56` の block を WALL と呼ぶ。単発ジャンプ（頂点 52.08px）では絶対に越えられず、
+ * **手前の踏み台に乗ってから跳ぶ以外に突破経路が無い**。
+ * 踏み台が細いと2段ジャンプ全体が1つのフレームパーフェクト動作に潰れ、
+ * 憲法1 の「WHEN」が「運」に変わるため、接地時間を W3 で確保する。
+ */
+function wallChecks(stage: StageDef): CheckIssue[] {
+  const issues: CheckIssue[] = []
+  const reach = horizontalReach(stage.speedPxPerFrame)
+  const minStepW = Math.ceil(WALL_STEP_MIN_GROUND_FRAMES * stage.speedPxPerFrame - PLAYER_HITBOX_W)
+
+  for (const o of stage.objects) {
+    if (o.t !== 'block' || o.h < WALL_MIN_H) continue
+
+    // 直前の踏み台（block / plat）を探す
+    let step: { x: number; right: number; h: number; w: number } | null = null
+    for (const c of stage.objects) {
+      if (c.x >= o.x) continue
+      if (c.t === 'block' && c.h < WALL_MIN_H) {
+        step = { x: c.x, right: c.x + c.w, h: c.h, w: c.w }
+      } else if (c.t === 'plat') {
+        step = { x: c.x, right: c.x + PLAT_W, h: stage.groundY - c.y, w: PLAT_W }
+      }
+    }
+
+    if (!step) {
+      issues.push({
+        level: 'FAIL',
+        code: 'WALL_NO_STEP',
+        message: `WALL(h=${o.h}, x=${o.x}) の手前に踏み台がありません。単発では越えられないため突破不能`,
+      })
+      continue
+    }
+    // W2: 踏み台上からの実効上限
+    if (o.h > step.h + WALL_STEP_HEADROOM) {
+      issues.push({
+        level: 'FAIL',
+        code: 'WALL_H',
+        message: `WALL(h=${o.h}, x=${o.x}) が踏み台高さ ${step.h}px + ${WALL_STEP_HEADROOM}px を超えます（W2）`,
+      })
+    }
+    // W3: 踏み台の接地時間（最低 8f）
+    if (step.w < minStepW) {
+      issues.push({
+        level: 'FAIL',
+        code: 'WALL_STEP_W',
+        message: `踏み台の幅 ${step.w}px が下限 ${minStepW}px を下回ります（W3・最低 ${WALL_STEP_MIN_GROUND_FRAMES}f の接地）。細いと2段ジャンプがフレームパーフェクトに潰れ WHEN が運に変わる`,
+      })
+    }
+    // W4: 踏み台 → WALL の水平間隔
+    const d = o.x - step.right
+    if (d > Math.floor(reach * PIT_MAX_RATIO)) {
+      issues.push({
+        level: 'FAIL',
+        code: 'WALL_GAP',
+        message: `踏み台 → WALL の間隔 ${d}px が上限 ${Math.floor(reach * PIT_MAX_RATIO)}px を超えます（W4）`,
+      })
+    }
+    // W5: 踏み台の直前に warn マーカー
+    const hasWarn = stage.objects.some((w) => w.t === 'warn' && w.x < step.x && step.x - w.x <= 400)
+    if (!hasWarn) {
+      issues.push({
+        level: 'FAIL',
+        code: 'WALL_WARN',
+        message: `WALL(x=${o.x}) の踏み台の手前に §7-3 ルールB の warn マーカーがありません（W5）`,
+      })
+    }
+  }
+  return issues
 }
 
 export function staticChecks(stage: StageDef, budget: StageBudget): CheckIssue[] {
@@ -1096,12 +1257,88 @@ export function staticChecks(stage: StageDef, budget: StageBudget): CheckIssue[]
         })
       }
     }
-    if (o.t === 'block' && o.h > OBSTACLE_MAX_H) {
+    /*
+     * ブロックの高さ。
+     * §5-3 の上限 40px は §15-3 で撤廃され、`h >= 56` は WALL（G2）として扱う。
+     * 40 < h < 56 は「単発では越えられないのに踏み台規定も掛からない」宙ぶらりんの帯なので禁止する。
+     */
+    if (o.t === 'block' && o.h > OBSTACLE_MAX_H && o.h < WALL_MIN_H) {
       issues.push({
         level: 'FAIL',
         code: 'OBJ_H',
-        message: `障害物の高さ ${o.h}px が上限 ${OBSTACLE_MAX_H}px を超えます (x=${o.x})`,
+        message: `ブロックの高さ ${o.h}px が通常上限 ${OBSTACLE_MAX_H}px と WALL 下限 ${WALL_MIN_H}px の間にあります (x=${o.x})。単発で越えられず踏み台規定も掛からない`,
       })
+    }
+    // OB-11 swing のパラメータ範囲（GDD §15-2）
+    if (o.t === 'swing') {
+      if (o.amp < SWING_AMP_MIN || o.amp > SWING_AMP_MAX) {
+        issues.push({
+          level: 'FAIL',
+          code: 'SWING_AMP',
+          message: `swing の振幅 ${o.amp}px が範囲 ${SWING_AMP_MIN}〜${SWING_AMP_MAX} の外です (x=${o.x})`,
+        })
+      }
+      if (o.period < SWING_PERIOD_MIN || o.period > SWING_PERIOD_MAX) {
+        issues.push({
+          level: 'FAIL',
+          code: 'SWING_PERIOD',
+          message: `swing の周期 ${o.period}f が範囲 ${SWING_PERIOD_MIN}〜${SWING_PERIOD_MAX} の外です (x=${o.x})`,
+        })
+      }
+    }
+    // OB-14 spear（GDD §15-5）
+    if (o.t === 'spear') {
+      if (o.h < SPEAR_H_MIN || o.h > SPEAR_H_MAX) {
+        issues.push({
+          level: 'FAIL',
+          code: 'SPEAR_H',
+          message: `槍の高さ ${o.h}px が範囲 ${SPEAR_H_MIN}〜${SPEAR_H_MAX} の外です (x=${o.x})。${SPEAR_H_MAX}px 超は回避不能になる`,
+        })
+      }
+      if (o.rise < SPEAR_RISE_MIN || o.rise > SPEAR_RISE_MAX) {
+        issues.push({
+          level: 'FAIL',
+          code: 'SPEAR_RISE',
+          message: `槍の伸長 ${o.rise}f が範囲 ${SPEAR_RISE_MIN}〜${SPEAR_RISE_MAX} の外です (x=${o.x})`,
+        })
+      }
+      // S1: 通過開始までに伸びきっていること / S2: 跳ぶ判断を終えた後に生え始めること
+      const v = stage.speedPxPerFrame
+      const sx = o.x + 1 // 判定左端（視覚6px の中央に判定4px）
+      const lo = sx - 69 - JUMP_APEX_FRAMES * v
+      const hi = sx - 69 - o.rise * v
+      if (o.triggerX < lo || o.triggerX > hi) {
+        issues.push({
+          level: 'FAIL',
+          code: 'SPEAR_TRIGGER',
+          message: `槍の triggerX=${o.triggerX} が許容帯 ${lo.toFixed(1)}〜${hi.toFixed(1)} の外です (x=${o.x})。S1(通過までに伸びきる)/S2(跳ぶ判断の後に生える) を満たさない`,
+        })
+      }
+    }
+    // OB-08 fly の速度域と先読み猶予（GDD §15-4 F1/F2）
+    if (o.t === 'fly') {
+      if (o.vx < FLY_VX_MIN || o.vx > FLY_VX_MAX) {
+        issues.push({
+          level: 'FAIL',
+          code: 'FLY_VX',
+          message: `飛行体の vx=${o.vx} が範囲 ${FLY_VX_MIN}〜${FLY_VX_MAX} の外です (x=${o.x})`,
+        })
+      }
+      const lookahead = LOOKAHEAD_PX / (stage.speedPxPerFrame + o.vx)
+      if (lookahead < FLY_LOOKAHEAD_MIN_FRAMES) {
+        issues.push({
+          level: 'FAIL',
+          code: 'FLY_LOOKAHEAD',
+          message: `飛行体の先読み猶予 ${lookahead.toFixed(1)}f が下限 ${FLY_LOOKAHEAD_MIN_FRAMES}f を下回ります (x=${o.x})。視覚による確認が原理的に成立しない`,
+        })
+      } else if (lookahead < FLY_LOOKAHEAD_WARN_FRAMES) {
+        const hasWarn = stage.objects.some((w) => w.t === 'warn' && w.x < o.x && o.x - w.x < 400)
+        issues.push({
+          level: hasWarn ? 'WARN' : 'FAIL',
+          code: 'FLY_SURPRISE',
+          message: `飛行体の先読み猶予 ${lookahead.toFixed(1)}f が ${FLY_LOOKAHEAD_WARN_FRAMES}f 未満（初見殺し扱い・x=${o.x}）。${hasWarn ? 'warn マーカーあり' : '§7-3 ルールB の warn マーカーが必要'}`,
+        })
+      }
     }
     if (o.t === 'ceil' && (o.y < 12 || o.y + 16 > stage.groundY)) {
       issues.push({
@@ -1124,6 +1361,8 @@ export function staticChecks(stage: StageDef, budget: StageBudget): CheckIssue[]
       })
     }
   }
+
+  issues.push(...wallChecks(stage))
 
   const counted = stage.objects.filter((o) => o.t !== 'warn').length
   if (counted !== budget.objectCount) {
@@ -1236,6 +1475,26 @@ export function verifyStage(stage: StageDef, budget: StageBudget): VerifyResult 
         .join(' / ')}`,
     })
   }
+
+  // 検査10〜12: 新指標の帯（GDD §15-7-3 / §15-7-4）
+  const band = (
+    v: number,
+    [lo, hi]: readonly [number, number],
+    code: string,
+    label: string,
+    level: IssueLevel,
+  ) => {
+    if (v < lo || v > hi) {
+      issues.push({
+        level,
+        code,
+        message: `${label} ${v.toFixed(3)} が帯 ${lo}〜${hi} の外です`,
+      })
+    }
+  }
+  band(solve.tightDensity, budget.tightDensity, 'TIGHT_DENSITY', '狭窓密度', 'FAIL')
+  band(solve.suppressRatio, budget.suppressRatio, 'SUPPRESS_RATIO', '抑制率', 'FAIL')
+  band(solve.compositeRatio, budget.compositeRatio, 'COMPOSITE_RATIO', '複合度', 'WARN')
 
   // 検査9: クライマックス位置（区間難度 D(t)）。S1 のみ警告
   if (solve.climaxAt < CLIMAX_MIN_RATIO || solve.climaxAt > CLIMAX_MAX_RATIO) {

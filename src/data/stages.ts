@@ -22,16 +22,16 @@ import type { StageBudget, StageDef } from '@/lib/game/types'
  * S4〜S10 のステージ実体は本幕のスコープ外。
  */
 export const STAGE_BUDGETS: Record<number, StageBudget> = {
-  1: { objectCount: 11, maxChain: 1, windowMinFrames: 20, windowMaxFrames: 40, climaxAt: 0.88, climaxWarnOnly: true },
-  2: { objectCount: 17, maxChain: 2, windowMinFrames: 18, windowMaxFrames: 32, climaxAt: 0.9, climaxWarnOnly: false },
-  3: { objectCount: 23, maxChain: 2, windowMinFrames: 16, windowMaxFrames: 26, climaxAt: 0.86, climaxWarnOnly: false },
-  4: { objectCount: 30, maxChain: 3, windowMinFrames: 14, windowMaxFrames: 22, climaxAt: 0.91, climaxWarnOnly: false },
-  5: { objectCount: 34, maxChain: 3, windowMinFrames: 12, windowMaxFrames: 19, climaxAt: 0.88, climaxWarnOnly: false },
-  6: { objectCount: 43, maxChain: 4, windowMinFrames: 10, windowMaxFrames: 16, climaxAt: 0.92, climaxWarnOnly: false },
-  7: { objectCount: 47, maxChain: 4, windowMinFrames: 9, windowMaxFrames: 14, climaxAt: 0.89, climaxWarnOnly: false },
-  8: { objectCount: 58, maxChain: 5, windowMinFrames: 7, windowMaxFrames: 11, climaxAt: 0.93, climaxWarnOnly: false },
-  9: { objectCount: 72, maxChain: 5, windowMinFrames: 6, windowMaxFrames: 9, climaxAt: 0.9, climaxWarnOnly: false },
-  10: { objectCount: 90, maxChain: 5, windowMinFrames: 4, windowMaxFrames: 7, climaxAt: 0.95, climaxWarnOnly: false },
+  1: { objectCount: 11, maxChain: 1, windowMinFrames: 20, windowMaxFrames: 40, climaxAt: 0.88, climaxWarnOnly: true, tightDensity: [0.0, 0.05], suppressRatio: [0.0, 0.1], compositeRatio: [0.0, 0.1] },
+  2: { objectCount: 17, maxChain: 2, windowMinFrames: 18, windowMaxFrames: 32, climaxAt: 0.9, climaxWarnOnly: false, tightDensity: [0.0, 0.05], suppressRatio: [0.0, 0.1], compositeRatio: [0.0, 0.1] },
+  3: { objectCount: 23, maxChain: 2, windowMinFrames: 16, windowMaxFrames: 26, climaxAt: 0.86, climaxWarnOnly: false, tightDensity: [0.0, 0.05], suppressRatio: [0.0, 0.1], compositeRatio: [0.0, 0.1] },
+  4: { objectCount: 30, maxChain: 3, windowMinFrames: 14, windowMaxFrames: 22, climaxAt: 0.91, climaxWarnOnly: false, tightDensity: [0.0, 0.05], suppressRatio: [0.0, 0.1], compositeRatio: [0.0, 0.1] },
+  5: { objectCount: 34, maxChain: 3, windowMinFrames: 12, windowMaxFrames: 19, climaxAt: 0.88, climaxWarnOnly: false, tightDensity: [0.0, 0.05], suppressRatio: [0.0, 0.1], compositeRatio: [0.0, 0.1] },
+  6: { objectCount: 43, maxChain: 4, windowMinFrames: 10, windowMaxFrames: 16, climaxAt: 0.92, climaxWarnOnly: false, tightDensity: [0.05, 0.12], suppressRatio: [0.05, 0.15], compositeRatio: [0.1, 0.2] },
+  7: { objectCount: 47, maxChain: 4, windowMinFrames: 9, windowMaxFrames: 14, climaxAt: 0.89, climaxWarnOnly: false, tightDensity: [0.05, 0.12], suppressRatio: [0.05, 0.15], compositeRatio: [0.1, 0.2] },
+  8: { objectCount: 58, maxChain: 5, windowMinFrames: 7, windowMaxFrames: 11, climaxAt: 0.93, climaxWarnOnly: false, tightDensity: [0.05, 0.12], suppressRatio: [0.05, 0.15], compositeRatio: [0.1, 0.2] },
+  9: { objectCount: 72, maxChain: 5, windowMinFrames: 6, windowMaxFrames: 9, climaxAt: 0.9, climaxWarnOnly: false, tightDensity: [0.05, 0.12], suppressRatio: [0.05, 0.15], compositeRatio: [0.1, 0.2] },
+  10: { objectCount: 90, maxChain: 5, windowMinFrames: 4, windowMaxFrames: 7, climaxAt: 0.95, climaxWarnOnly: false, tightDensity: [0.05, 0.12], suppressRatio: [0.05, 0.15], compositeRatio: [0.1, 0.2] },
 }
 
 // ---------------------------------------------------------------------------

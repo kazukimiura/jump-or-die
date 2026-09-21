@@ -156,6 +156,8 @@ export interface App {
   readyIdle: number
   /** 現在の整数倍スケール。44 CSS px の判定領域を論理座標へ換算するのに使う */
   viewScale: number
+  /** ステージセレクトで選択中の章（0..5）。GDD §15-9-2 */
+  chapter: number
 
   /** 入力キュー。イベントハンドラはここに積むだけ（憲法4） */
   taps: { x: number; y: number }[]
@@ -190,6 +192,29 @@ const HIT_TITLE_STAGES: HitRect = { x: 258, y: 148, w: 62, h: 16 }
 const HIT_TITLE_SFX: HitRect = { x: 0, y: 164, w: 72, h: 16 }
 /** TITLE の `FLASH` トグル */
 const HIT_TITLE_FLASH: HitRect = { x: 240, y: 164, w: 80, h: 16 }
+/**
+ * 章構成（GDD §15-6 / §15-9-2）。6章 × 5ステージ = 30本。
+ * 章タブは y0–15 に 6 個（各 48×14px）、枠は y24–120 に 5 枠（各 56×56px・間隔8px）。
+ *
+ * **描画は透B の担当で、まだ 30 本対応が入っていない。**
+ * そのため本実装は「存在するステージだけを返す」形にしてあり、
+ * S1〜S3 しか無い現状では章I の 3 件が返る＝従来と同じ挙動になる（休眠状態）。
+ * 透B が章タブを実装して矩形ヘルパを公開したら、`exitTapRegion` と同様に
+ * そちらへ委譲して数値の二重管理を解消すること。
+ */
+export const CHAPTERS: readonly (readonly number[])[] = [
+  [1, 2, 3, 4, 5],
+  [6, 7, 8, 9, 10],
+  [11, 12, 13, 14, 15],
+  [16, 17, 18, 19, 20],
+  [21, 22, 23, 24, 25],
+  [26, 27, 28, 29, 30],
+]
+/** 章タブ 6 個（各 48×14px、y0–15）。指の太さぶん縦に広げる */
+const CHAPTER_TAB_W = 48
+const CHAPTER_TAB_H = 16
+const CHAPTER_TAB_X0 = (LOGICAL_W - CHAPTER_TAB_W * 6) / 2
+
 /** SELECT の枠（draw.ts の CARD_X / CARD_Y / CARD_W / CARD_H と一致させる） */
 const HIT_SELECT_CARDS: readonly HitRect[] = [
   { x: 16, y: 56, w: 88, h: 72 },
@@ -233,6 +258,7 @@ export function createApp(deps: AppDeps): App {
     priorityHistory: [],
     readyIdle: 0,
     viewScale: 1,
+    chapter: 0,
     sessionDied: false,
     consecutiveDeaths: 0,
     freshEntry: true,
@@ -390,9 +416,18 @@ function dispatchTap(app: App, x: number, y: number): void {
         app.phase = 'TITLE'
         return
       }
-      for (let i = 0; i < HIT_SELECT_CARDS.length && i < STAGES.length; i++) {
+      // 章タブ（複数章に実在ステージがあるときだけ反応する。現状は休眠）
+      if (y < CHAPTER_TAB_H && liveChapters(app).length > 1) {
+        const i = Math.floor((x - CHAPTER_TAB_X0) / CHAPTER_TAB_W)
+        if (i >= 0 && i < CHAPTERS.length && liveChapters(app).includes(i)) {
+          app.chapter = i
+        }
+        return
+      }
+      const entries = chapterStages(app)
+      for (let i = 0; i < HIT_SELECT_CARDS.length && i < entries.length; i++) {
         if (!inRect(HIT_SELECT_CARDS[i], x, y)) continue
-        const id = STAGES[i].id
+        const id = entries[i].id
         if (!stageRecord(app.save, id).unlock) return // 未解放は反応しない
         enterStage(app, id)
         return
@@ -670,6 +705,16 @@ function renderKindOf(o: ResolvedObj): RenderObstacleKind | null {
     case 'pit':
     case 'warn':
       return null
+    /*
+     * OB-11 swing / OB-14 spear（GDD §15-2 / §15-5）。
+     * **描画層にまだ種別が無い**（RenderObstacleKind に SWING / SPEAR が未定義）。
+     * 透B の対応が入るまでは描画対象から外す。エンジン側の判定は既に効いているので、
+     * ここで null を返しても当たり判定・ソルバ検査には影響しない。
+     * S4 以降のステージデータはまだ作っていないため、実画面に出る配置は存在しない。
+     */
+    case 'swing':
+    case 'spear':
+      return null
   }
 }
 
@@ -691,9 +736,23 @@ function titleDemo(uiFrame: number): { y: number; motion: 'RUN' | 'RISE' | 'FALL
   return { y: ground, motion: 'RUN', worldX: uiFrame * 2.5 }
 }
 
+/** 現在の章に属し、かつ実在するステージ */
+function chapterStages(app: App): StageDef[] {
+  const ids = CHAPTERS[app.chapter] ?? CHAPTERS[0]
+  return STAGES.filter((s) => ids.includes(s.id))
+}
+
+/** 実在ステージを1本でも持つ章の番号 */
+function liveChapters(app: App): number[] {
+  void app
+  return CHAPTERS.map((ids, i) => (STAGES.some((s) => ids.includes(s.id)) ? i : -1)).filter(
+    (i) => i >= 0,
+  )
+}
+
 function selectEntries(app: App): RenderSelectEntry[] {
-  // 第3幕のスコープ: S1–S3 のみ。S4 以降は**そもそも描かない**（UIテキスト §11-4）
-  return STAGES.slice(0, 3).map((s) => {
+  // 未実装のステージは**そもそも描かない**（UIテキスト §11-4）
+  return chapterStages(app).map((s) => {
     const rec = stageRecord(app.save, s.id)
     return {
       no: s.id,

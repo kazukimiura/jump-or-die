@@ -32,8 +32,14 @@ import {
   SPIKE_H,
   SPIKE_UNIT,
   SPRING_H,
+  SPEAR_HIT_W,
+  SPEAR_IDLE_H,
+  SPEAR_TIP_INSET,
+  SPEAR_VIS_W,
   SPRING_V0,
   SPRING_W,
+  SWING_H,
+  SWING_W,
 } from './constants'
 import {
   causeOf,
@@ -231,6 +237,36 @@ function resolveStatic(
         landable: !fallen,
         lethal: false,
         gone: vanished,
+      }
+    }
+    case 'swing':
+      return {
+        ...base,
+        // 三角波・等速。毎フレーム解き、判定解決時点で整数に丸める（§12-3 動体例外）
+        x: Math.round(def.x + def.amp * triangle((stageFrame + def.phase) / def.period)),
+        y: def.y,
+        w: SWING_W,
+        h: SWING_H,
+        landable: true,
+        lethal: true,
+      }
+    case 'spear': {
+      // トリガーは cameraX のみ。プレイヤーの位置・状態を一切参照しない（§15-5-4【P0】）
+      const riseStart = def.triggerX / stage.speedPxPerFrame
+      const t = (stageFrame - riseStart) / def.rise
+      const ratio = t <= 0 ? 0 : t >= 1 ? 1 : t
+      const grown = Math.round(def.h * ratio)
+      // 伏せ状態は高さ2px・非致死（地面と同じく踏める）
+      const up = grown > SPEAR_IDLE_H
+      const hitH = up ? grown - SPEAR_TIP_INSET : SPEAR_IDLE_H
+      return {
+        ...base,
+        x: def.x + (SPEAR_VIS_W - SPEAR_HIT_W) / 2,
+        y: g - hitH,
+        w: SPEAR_HIT_W,
+        h: hitH,
+        landable: false,
+        lethal: up,
       }
     }
     case 'spring':

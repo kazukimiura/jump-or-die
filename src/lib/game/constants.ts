@@ -130,6 +130,65 @@ export const CRUMBLE_FALL_FRAMES = 12
 export const SPRING_W = 12
 export const SPRING_H = 8
 
+/** OB-11 横振りブロック: 16 x 16（GDD §15-2） */
+export const SWING_W = 16
+export const SWING_H = 16
+/** 振幅の範囲 8〜48 px */
+export const SWING_AMP_MIN = 8
+export const SWING_AMP_MAX = 48
+/** 周期の範囲 60〜180 f */
+export const SWING_PERIOD_MIN = 60
+export const SWING_PERIOD_MAX = 180
+
+/** OB-14 槍: 視覚幅 6px / 判定幅 4px（GDD §15-5） */
+export const SPEAR_VIS_W = 6
+export const SPEAR_HIT_W = 4
+/** 視覚頂点より 2px 下を判定上端にする（§4-3 のトゲと同思想の甘さ） */
+export const SPEAR_TIP_INSET = 2
+/**
+ * 最大高の範囲。54 は h=55.08 で頂点が接することから 2px の安全余裕を引いた値（§15-5-2）。
+ *
+ * 【実測の申し送り】54 は「回避可能」の幾何上の限界であって、**生存窓の下限 6f
+ * （§15-7-2）を満たす限界ではない**。2px 刻みの実測では
+ *   速度3.0: h=52 → 6f / h=54 → 2f     速度6.0: h=52 → 9f / h=54 → 5f
+ * となり、**h=54 はどの速度でも 6f を下回る**。実用上の上限は **h=52**。
+ * 型の上限は GDD の記述どおり 54 のままにしてあるが、h=54 を置いたステージは
+ * 生存窓の下限検査で不合格になる（帯の検査が二重管理なしで捕まえる）。
+ */
+export const SPEAR_H_MIN = 40
+export const SPEAR_H_MAX = 54
+/** 実測で生存窓 6f を満たす実用上の上限（速度3.0 で 6f ちょうど） */
+export const SPEAR_H_PRACTICAL_MAX = 52
+/** 伸長フレーム数の範囲（既定 8 = 133ms） */
+export const SPEAR_RISE_MIN = 6
+export const SPEAR_RISE_MAX = 20
+export const SPEAR_RISE_DEFAULT = 8
+/** 伏せ状態の高さ 2px。非致死（地面と同じく踏める） */
+export const SPEAR_IDLE_H = 2
+
+// == G2 WALL の幾何規定（GDD §15-3） ======================================
+
+/** h >= 56 を WALL と呼ぶ。56 = JUMP_APEX 52.08 + 4。単発では絶対に越えられない */
+export const WALL_MIN_H = 56
+/** 踏み台上からの実効上限。WALL の h <= 踏み台高さ + 40 */
+export const WALL_STEP_HEADROOM = 40
+/** 踏み台に要求する最低接地フレーム数。w1 >= 8 * 速度 - 10 の 8 */
+export const WALL_STEP_MIN_GROUND_FRAMES = 8
+
+// == G3 fly の速度域（GDD §15-4） =========================================
+
+export const FLY_VX_MIN = 1.0
+export const FLY_VX_MAX = 4.0
+/** 252/(速度+vx) がこれを下回ると視覚確認が原理的に不成立（F1・不合格） */
+export const FLY_LOOKAHEAD_MIN_FRAMES = 18
+/** これを下回る配置は初見殺し扱い。ルールA・B が必須（F2・警告） */
+export const FLY_LOOKAHEAD_WARN_FRAMES = 24
+
+// == 新指標（GDD §15-7-3） ================================================
+
+/** 狭窓密度の対象となる生存窓の上限 10f (167ms) */
+export const TIGHT_WINDOW_FRAMES = 10
+
 // == 配置上限（GDD §5-3） ==================================================
 
 /** 谷の最小幅 24 px 固定 */
