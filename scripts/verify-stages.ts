@@ -18,7 +18,8 @@ import { goalFrame } from '../src/lib/game/stageRuntime'
 import {
   BREATH_MIN,
   CHAIN_GROUND_MAX,
-  DEADEND_LATENCY,
+  DEADEND_CTRL_WARN,
+  MISATTRIB_GAP_MAX,
   WORST_WINDOW_WARN,
 } from '../src/lib/game/constants'
 
@@ -30,7 +31,8 @@ let failed = 0
 console.log('=== JumpOrDie ステージソルバ検査 (GDD §7-4 / §14) ===')
 console.log(
   `指標: 生存窓=連続フレーム列の最大長・到達状態ごと / 主指標=マキシミン経路の最小生存窓 / ` +
-    `連鎖=接地 ${CHAIN_GROUND_MAX}f 以下 / 息継ぎ ${BREATH_MIN}f / 詰み潜伏上限 ${DEADEND_LATENCY}f\n`,
+    `連鎖=接地 ${CHAIN_GROUND_MAX}f 以下 / 息継ぎ ${BREATH_MIN}f / ` +
+    `誤帰属距離 上限 ${MISATTRIB_GAP_MAX} / 可制御詰み潜伏 警告 ${DEADEND_CTRL_WARN}f\n`,
 )
 
 for (const stage of STAGES) {
@@ -66,9 +68,12 @@ for (const stage of STAGES) {
         `  [警告しきい値 ${WORST_WINDOW_WARN}f]`,
     )
     console.log(
-      `  [5] 詰み潜伏時間   : 可制御 ${s.maxDeadEndLatency}f (${ms(s.maxDeadEndLatency)}ms) / ` +
-        `素の値 ${s.maxRawDeadEndLatency}f (${ms(s.maxRawDeadEndLatency)}ms)` +
-        `  [上限 ${DEADEND_LATENCY}f] ${s.maxDeadEndLatency > DEADEND_LATENCY ? 'NG' : 'OK'}`,
+      `  [5] 誤帰属距離     : ${s.maxMisattribGap} 地点  [上限 ${MISATTRIB_GAP_MAX}] ` +
+        `${s.maxMisattribGap > MISATTRIB_GAP_MAX ? 'NG' : 'OK'}`,
+    )
+    console.log(
+      `  [5b] 可制御詰み潜伏 : ${s.maxDeadEndCtrl}f (${ms(s.maxDeadEndCtrl)}ms)  [警告 ${DEADEND_CTRL_WARN}f 超] ` +
+        `/ 素の値 ${s.maxDeadEndRaw}f (${ms(s.maxDeadEndRaw)}ms・判定に用いない)`,
     )
     console.log(
       `  [7] 最大チェイン長 : ${s.maxChain}  [上限 ${budget.maxChain}] / 息継ぎ違反 ${s.breathViolations.length} 件`,
@@ -82,6 +87,25 @@ for (const stage of STAGES) {
     console.log(
       `      接地時間       : ${s.route.map((j) => j.groundedFrames).join(', ')}`,
     )
+    // §14-9 / §14-12 #4: 窓が「連続フレーム列の最大長」であることの証跡
+    const discontinuous = s.route.filter((j) => j.runCount > 1)
+    console.log(
+      `      窓の連続性     : 全 ${s.route.length} 本中、有効タップ区間が1本のもの ` +
+        `${s.route.length - discontinuous.length} 本 / 複数に割れたもの ${discontinuous.length} 本` +
+        `（窓は最長の1本の長さで、合算ではない）`,
+    )
+    const sample = s.route.find((j) => j.window === s.minWindow) ?? s.route[0]
+    console.log(
+      `      窓の実体(最小) : #${sample.index} 窓 ${sample.window}f = 連続区間 [f${sample.first}..f${sample.last}] ` +
+        `(last-first+1 = ${sample.last - sample.first + 1}) / 区間数 ${sample.runCount}`,
+    )
+    if (discontinuous.length > 0) {
+      console.log(
+        `      割れた窓の内訳 : ${discontinuous
+          .map((j) => `#${j.index}(${j.runCount}区間→窓${j.window}f)`)
+          .join(', ')}`,
+      )
+    }
     const tight = [...s.route]
       .sort((a, b) => a.window - b.window)
       .slice(0, 3)

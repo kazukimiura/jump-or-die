@@ -31,6 +31,14 @@
  *   （最小タップ数がちょうど 1 減る）」とした。これにより窓は「その障害物を越えるための
  *   タップを置ける連続フレーム列」という本来の意味に一致し、有界になる。
  *   §14-① が禁じた「和集合を取る」処理は行っていない。
+ *   → §14-9 にて企画 駆が「フィルタであって合算ではない。むしろ必須」と承認済み。
+ *   フィルタ適用後の窓は **連続フレーム列の最大長** で測る（集合の要素数ではない）。
+ *   ArrivalWindows.runs に不連続な区間がそのまま残るので、runs.length で検証できる。
+ *
+ * 【誤帰属距離（MISATTRIBUTION GAP）— GDD §14-8】
+ *   旧「詰み潜伏時間 42f 上限」は §14-8 で撤回された。置換後の指標はこちら。
+ *   詰み（W からの離脱）から死亡までの間に、プレイヤーが「クリアした」と知覚する
+ *   イベント（＝要求タップ地点の通過）を何個挟んだかを数える。上限 0。
  * ---------------------------------------------------------------------------
  */
 
@@ -45,17 +53,23 @@ import {
   CLIMAX_WINDOW_FRAMES,
   COYOTE_TIME,
   CRUMBLE_W,
-  DEADEND_LATENCY,
+  FLY_W,
+  DEADEND_CTRL_WARN,
+  MISATTRIB_GAP_MAX,
   GAP_MAX_RATIO,
   LIFT_W,
   OBSTACLE_MAX_H,
   PIT_MAX_RATIO,
   PIT_MIN_W,
   PLAT_W,
+  PLAYER_HITBOX_OX,
+  PLAYER_X,
+  SPIKE_UNIT,
+  SPRING_W,
   WORST_WINDOW_WARN,
 } from './constants'
 import { canJumpNow } from './input'
-import { horizontalReach } from './physics'
+import { horizontalReach, lethalTop } from './physics'
 import {
   cloneSim,
   createSim,
@@ -70,6 +84,8 @@ const INF = Number.POSITIVE_INFINITY
 
 /** 状態数の安全弁。これを超えたら設計が破綻しているので探索を打ち切る */
 const MAX_STATES = 4_000_000
+
+const ZERO_PROFILE = { frames: 0, ctrl: 0 }
 
 // ---------------------------------------------------------------------------
 // 結果の型
@@ -93,29 +109,37 @@ export type RouteJump = {
   groundedFrames: number
   /** この時点での連鎖長（1 なら単発） */
   chain: number
+  /**
+   * この到達状態で「有効タップ」と判定された連続区間の本数（§14-9 の確認事項）。
+   * 1 なら window は文字どおり1本の連続フレーム列。2 以上でも window は
+   * **最大の1本の長さ**であって合計ではない。
+   */
+  runCount: number
+  /**
+   * このタップが対象とする障害物を通過し終えるフレーム（＝プレイヤーが
+   * 「クリアした」と知覚するイベントの発生時刻）。誤帰属距離の計測に使う
+   */
+  passFrame: number
 }
 
 /**
- * 詰み潜伏（遅延死）の検出結果。
+ * 詰み（勝利領域 W からの離脱）の検出結果。
  *
- * 【計測が2種類ある理由 — 透A / 采配への申し送り】
- * §14-① 副2 の素の定義（詰みフレーム→死亡フレーム）は、**構造的に 42f を必ず超える**。
- * 詰みに入る手段のひとつは「跳ぶ位置を誤って、障害物の直前に着地する」ことだが、
- * ジャンプは必ず 42f の滞空を伴うため、着地して死ぬまでの経過は最低でも 42f + α になる。
- * 障害物を持つステージには必ずこの帯が存在するので、素の定義では合格し得ない（§14-① の
- * 上限 42f = JUMP_AIRTIME と同値であることが原因）。
- *
- * そこで **可制御詰み潜伏時間**（＝詰み直後の強制滞空を差し引いた値）を併せて測る。
- * §14-① の趣旨「ミスと死が1ジャンプ弧の内側に収まっていれば1つの出来事として知覚する」は
- * こちらで表現される。不合格判定は可制御側で行い、素の値は警告として出す。
+ * - `misattrib` … 誤帰属距離。詰み〜死亡の間に通過した要求タップ地点の数。上限 0（不合格判定）
+ * - `ctrl`      … 可制御詰み潜伏時間。詰み後に接地して操作可能だったフレーム数の合計（警告）
+ * - `raw`       … 素の経過。**判定に用いない**（§14-8 で撤回済み。診断ログのみ）
  */
 export type DeadEnd = {
   /** 勝利領域から外れたフレーム */
   frame: number
-  /** 素の潜伏時間（詰み→死亡） */
+  /** 死亡フレーム */
+  deathFrame: number
+  /** 素の潜伏時間（詰み→死亡）。診断のみ */
   raw: number
-  /** 可制御潜伏時間（詰み直後の強制滞空を除く） */
-  latency: number
+  /** 可制御潜伏時間（接地して操作可能だったフレーム数の合計） */
+  ctrl: number
+  /** 誤帰属距離（通過した要求タップ地点の数） */
+  misattrib: number
   /** 外れた地点の到達率 */
   at: number
 }
@@ -136,12 +160,16 @@ export type SolveResult = {
   worstWindow: number
   /** 副1 の地点（到達率） */
   worstWindowAt: number
-  /** 副2: 可制御詰み潜伏時間の最大値（不合格判定に使う） */
-  maxDeadEndLatency: number
-  /** 副2: 素の詰み潜伏時間の最大値（参考・警告） */
-  maxRawDeadEndLatency: number
-  /** 上限を超えた詰み潜伏地点（最大5件） */
-  deadEnds: DeadEnd[]
+  /** 検査5: 誤帰属距離の最大値（上限 0。1以上で不合格） */
+  maxMisattribGap: number
+  /** 検査5b: 可制御詰み潜伏時間の最大値（42f 超で警告） */
+  maxDeadEndCtrl: number
+  /** 診断のみ: 素の詰み潜伏時間の最大値。判定に用いない */
+  maxDeadEndRaw: number
+  /** 誤帰属距離が 1 以上の地点（最大5件） */
+  misattribHits: DeadEnd[]
+  /** 可制御詰み潜伏が警告しきい値を超えた地点（最大5件） */
+  ctrlHits: DeadEnd[]
   /** 最大チェイン長（接地 12f 以下でつながるジャンプ列の本数） */
   maxChain: number
   /** 息継ぎ規定の違反地点（到達率） */
@@ -208,7 +236,7 @@ class Search {
   readonly stage: StageDef
   readonly maxFrame: number
   private memoTaps = new Map<string, number>()
-  private memoSurvive = new Map<string, number>()
+  private memoSurvive = new Map<string, { frames: number; ctrl: number }>()
   private memoArrival = new Map<string, ArrivalWindows>()
 
   constructor(stage: StageDef) {
@@ -262,32 +290,49 @@ class Search {
   }
 
   /**
-   * その状態から死ぬまでの最長フレーム数（詰み潜伏時間の計測用）。
-   * プレイヤーは生き延びようとするので、最長の継続を採る。
+   * その状態から死ぬまでの経過（詰み潜伏の計測用）。
+   * プレイヤーは生き延びようとするので、**最長の継続**を採る。
+   *
+   * - frames … 死亡までの総フレーム数（素の値。診断のみ）
+   * - ctrl   … そのうち接地して操作可能だったフレーム数（GDD §14-8-3 の可制御詰み潜伏）
    */
-  survivalFrames(sim: SimState): number {
-    if (sim.dead) return 0
-    if (sim.cleared) return 0
-    if (sim.stageFrame > this.maxFrame) return 0
+  survivalProfile(sim: SimState): { frames: number; ctrl: number } {
+    if (sim.dead || sim.cleared || sim.stageFrame > this.maxFrame) {
+      return ZERO_PROFILE
+    }
 
     const key = stateKey(sim)
     const hit = this.memoSurvive.get(key)
     if (hit !== undefined) return hit
-    this.memoSurvive.set(key, 0)
+    this.memoSurvive.set(key, ZERO_PROFILE)
 
-    let best = 1 + this.survivalFrames(this.advance(sim, false))
-    if (canJumpNow(sim.stageFrame, sim.player)) {
-      const t = 1 + this.survivalFrames(this.advance(sim, true))
-      if (t > best) best = t
+    const jumpable = canJumpNow(sim.stageFrame, sim.player)
+    let best = this.survivalProfile(this.advance(sim, false))
+    if (jumpable) {
+      const alt = this.survivalProfile(this.advance(sim, true))
+      // 最長生存を優先し、同値なら可制御フレーム数が大きいほうを採る（保守側）
+      if (alt.frames > best.frames || (alt.frames === best.frames && alt.ctrl > best.ctrl)) {
+        best = alt
+      }
     }
-    this.memoSurvive.set(key, best)
-    return best
+
+    const out = { frames: 1 + best.frames, ctrl: (jumpable ? 1 : 0) + best.ctrl }
+    this.memoSurvive.set(key, out)
+    return out
   }
 
   /**
    * 到達状態 s の生存窓を測る（GDD §14-①）。
+   *
    * s から跳ばずに進め、ジャンプ可能なフレームを列挙し、
-   * 「タップすると最小タップ数がちょうど1減る」フレームの**連続列**を切り出す。
+   * 「タップすると最小タップ数がちょうど1減る」フレームを **有効タップ** として
+   * 抽出したうえで、その **連続フレーム列** を切り出す。
+   *
+   * 【§14-9 の確認事項に対する実装の明言】
+   * - フィルタ（有効タップ判定）→ 連続列の切り出し、の順で適用している
+   * - 窓は `runs` の**要素数の合計ではなく、最長の1本の長さ**である
+   * - 不連続な区間は `runs` に別要素として残るので、`runs.length` で
+   *   「1本の連続区間かどうか」を検証できる（検査スクリプトが出力する）
    */
   arrivalWindows(arrival: SimState): ArrivalWindows {
     const key = stateKey(arrival)
@@ -310,6 +355,14 @@ class Search {
     const runs: { from: number; to: number }[] = []
     let start = -1
     for (let i = 0; i < run.length; i++) {
+      // 有効タップのフィルタ（§14-9 で承認済み。合算ではなく絞り込み）
+      //
+      // TODO【P1 / GDD §14-12 #5・S5 のステージ作成に着手する前に実施】
+      //   この厳格な等式は「追加タップを払って上面に乗る迂回ルート」を窓計算から
+      //   除外してしまう。影響は保守側（窓が狭く出る）なので S1〜S3 の結果は有効だが、
+      //   S5（OB-05 浮遊足場）以降「上に乗るのが正解」の配置では偽陽性が出る。
+      //   拡張案: ok = s' in W かつ ( T(s') <= T(s)-1
+      //                             または s' が「跳ばずに走り続ける」では到達できない状態 )
       const ok =
         target !== INF &&
         target > 0 &&
@@ -323,27 +376,13 @@ class Search {
     }
     if (start >= 0) runs.push({ from: start, to: run.length - 1 })
 
+    // 連続フレーム列の最大長。**和は取らない**（§14-① 縛り a）
     let window = 0
     for (const r of runs) window = Math.max(window, r.to - r.from + 1)
 
     const out: ArrivalWindows = { run, runs, window }
     this.memoArrival.set(key, out)
     return out
-  }
-
-  /**
-   * その状態から次にジャンプ可能になるまでの強制滞空フレーム数。
-   * 空中では選択肢が無いので、この区間はプレイヤーの判断に影響しない。
-   */
-  forcedAirborneFrames(sim: SimState): number {
-    let s = sim
-    let n = 0
-    while (s.stageFrame <= this.maxFrame && !s.dead && !s.cleared) {
-      if (canJumpNow(s.stageFrame, s.player)) break
-      s = this.advance(s, false)
-      n++
-    }
-    return n
   }
 
   /**
@@ -375,6 +414,8 @@ type MaximinNode = {
   window: number
   first: number
   last: number
+  /** その到達状態にあった有効タップ連続区間の本数（§14-9 の検証用） */
+  runCount: number
 }
 
 function solveMaximin(search: Search, start: SimState): {
@@ -383,8 +424,8 @@ function solveMaximin(search: Search, start: SimState): {
   feasible: boolean
 } {
   const memo = new Map<string, MaximinNode>()
-  const NONE: MaximinNode = { value: -INF, frame: -1, window: 0, first: 0, last: 0 }
-  const DONE: MaximinNode = { value: INF, frame: -1, window: 0, first: 0, last: 0 }
+  const NONE: MaximinNode = { value: -INF, frame: -1, window: 0, first: 0, last: 0, runCount: 0 }
+  const DONE: MaximinNode = { value: INF, frame: -1, window: 0, first: 0, last: 0, runCount: 0 }
 
   const visit = (arrival: SimState): MaximinNode => {
     const key = stateKey(arrival)
@@ -446,6 +487,7 @@ function solveMaximin(search: Search, start: SimState): {
           window: len,
           first: aw.run[r.from].stageFrame,
           last: aw.run[r.to].stageFrame,
+          runCount: aw.runs.length,
         }
       }
     }
@@ -499,6 +541,8 @@ function solveMaximin(search: Search, start: SimState): {
       at: progressRatio(search.stage, node.frame),
       groundedFrames: node.frame - s.player.groundedSince,
       chain: 1,
+      runCount: node.runCount,
+      passFrame: -1,
     })
 
     cursor = search.nextArrival(search.advance(s, true))
@@ -526,6 +570,91 @@ function solveMaximin(search: Search, start: SimState): {
 // 副1: 最悪生存窓 / 副2: 詰み潜伏時間
 // ---------------------------------------------------------------------------
 
+/**
+ * 各「要求タップ地点」の通過フレームを求める（GDD §14-8-3）。
+ *
+ * 推奨ルートのタップ i について、そのタップが対象とする障害物
+ * （タップ時点でプレイヤーの前方にある最初の非 warn 障害物）の右端を
+ * プレイヤーの致死ボックス左辺が追い越すフレームを返す。
+ * これが「プレイヤーが『クリアした』と知覚するイベント」の発生時刻の候補になる。
+ *
+ * ただし **フレームだけでは成功体験と断定できない**。谷（OB-03）に落ちた場合、
+ * ワールドXは谷の右端を通り過ぎるが、プレイヤーは穴の中にいて「越えた」とは
+ * 知覚しない。そのため実際の計数時に「地面より上にいたか」を併せて判定する
+ * （countPassedOnPath）。
+ */
+function computePassFrames(stage: StageDef, route: RouteJump[]): number[] {
+  const edges = stage.objects
+    .filter((o) => o.t !== 'warn')
+    .map((o) => {
+      const w =
+        o.t === 'block' ? o.w
+          : o.t === 'pit' ? o.w
+          : o.t === 'spike' ? o.n * SPIKE_UNIT
+          : o.t === 'ceil' ? o.w
+          : o.t === 'plat' ? PLAT_W
+          : o.t === 'lift' ? LIFT_W
+          : o.t === 'crumble' ? CRUMBLE_W
+          : o.t === 'fly' ? FLY_W
+          : SPRING_W
+      return o.x + w
+    })
+    .sort((a, b) => a - b)
+
+  const out: number[] = []
+  for (const j of route) {
+    const lethalLeft = playerWorldX(stage, j.frame) + PLAYER_HITBOX_OX
+    const right = edges.find((e) => e > lethalLeft)
+    if (right === undefined) {
+      out.push(Number.POSITIVE_INFINITY)
+      continue
+    }
+    const f = Math.ceil((right - PLAYER_HITBOX_OX - PLAYER_X) / stage.speedPxPerFrame) + 1
+    out.push(f)
+  }
+  return out
+}
+
+/**
+ * 誤帰属距離を数える（GDD §14-8-3）。
+ *
+ * 詰み状態 `doom` から最長生存の継続をたどり、その途中で
+ * **要求タップ地点を「地面より上にいる状態で」通過した回数**を返す。
+ * 谷に落ちながらXだけ通り過ぎた場合は成功体験ではないので数えない。
+ */
+function countPassedOnPath(
+  search: Search,
+  stage: StageDef,
+  doom: SimState,
+  deathFrame: number,
+  passFrames: number[],
+): number {
+  // 候補が無ければ歩かずに 0
+  const candidates = passFrames.filter((f) => f > doom.stageFrame && f <= deathFrame)
+  if (candidates.length === 0) return 0
+  const wanted = new Set(candidates)
+
+  let n = 0
+  let s = doom
+  while (!s.dead && !s.cleared && s.stageFrame <= search.maxFrame) {
+    if (wanted.has(s.stageFrame)) {
+      // 致死ボックス上辺が地面より上（＝穴に落ちている最中ではない）なら成功体験
+      if (lethalTop(s.player.y) <= stage.groundY) n++
+    }
+    // 最長生存の分岐をたどる
+    const noJump = search.advance(s, false)
+    let pick = noJump
+    if (canJumpNow(s.stageFrame, s.player)) {
+      const jump = search.advance(s, true)
+      const a = search.survivalProfile(noJump)
+      const b = search.survivalProfile(jump)
+      if (b.frames > a.frames || (b.frames === a.frames && b.ctrl > a.ctrl)) pick = jump
+    }
+    s = pick
+  }
+  return n
+}
+
 /** 生存窓（最大連続列）の先頭フレーム */
 function windowStartFrame(aw: ArrivalWindows): number {
   let best = aw.runs[0]
@@ -536,18 +665,23 @@ function windowStartFrame(aw: ArrivalWindows): number {
 function scanReachable(
   search: Search,
   stage: StageDef,
+  passFrames: number[],
 ): {
   worstWindow: number
   worstWindowAt: number
-  maxDeadEndLatency: number
-  maxRawDeadEndLatency: number
-  deadEnds: DeadEnd[]
+  maxMisattribGap: number
+  maxDeadEndCtrl: number
+  maxDeadEndRaw: number
+  misattribHits: DeadEnd[]
+  ctrlHits: DeadEnd[]
 } {
   let worstWindow = INF
   let worstWindowAt = 0
-  let maxDeadEndLatency = 0
-  let maxRawDeadEndLatency = 0
-  const deadEnds: DeadEnd[] = []
+  let maxMisattribGap = 0
+  let maxDeadEndCtrl = 0
+  let maxDeadEndRaw = 0
+  const misattribHits: DeadEnd[] = []
+  const ctrlHits: DeadEnd[] = []
 
   const seen = new Set<string>()
   const start = createSim(stage)
@@ -574,21 +708,24 @@ function scanReachable(
         const n = search.advance(s, a)
         if (n.dead) continue
         if (!search.inW(n)) {
-          // 勝利領域から外れた。ここから実際に死ぬまでの猶予を測る
-          const raw = search.survivalFrames(n)
-          // 詰み直後の強制滞空（プレイヤーに選択肢が無い区間）は差し引く
-          const forced = search.forcedAirborneFrames(n)
-          const latency = Math.max(0, raw - forced)
-          if (raw > maxRawDeadEndLatency) maxRawDeadEndLatency = raw
-          if (latency > maxDeadEndLatency) maxDeadEndLatency = latency
-          if (latency > DEADEND_LATENCY && deadEnds.length < 5) {
-            deadEnds.push({
-              frame: n.stageFrame,
-              raw,
-              latency,
-              at: progressRatio(stage, n.stageFrame),
-            })
+          // 勝利領域から外れた（＝ここで詰んだ）
+          const prof = search.survivalProfile(n)
+          const deathFrame = n.stageFrame + prof.frames
+          // 検査5: 誤帰属距離 ＝ 詰み〜死亡の間に通過した要求タップ地点の数
+          const misattrib = countPassedOnPath(search, stage, n, deathFrame, passFrames)
+          const de: DeadEnd = {
+            frame: n.stageFrame,
+            deathFrame,
+            raw: prof.frames,
+            ctrl: prof.ctrl,
+            misattrib,
+            at: progressRatio(stage, n.stageFrame),
           }
+          if (prof.frames > maxDeadEndRaw) maxDeadEndRaw = prof.frames
+          if (prof.ctrl > maxDeadEndCtrl) maxDeadEndCtrl = prof.ctrl
+          if (misattrib > maxMisattribGap) maxMisattribGap = misattrib
+          if (misattrib > MISATTRIB_GAP_MAX && misattribHits.length < 5) misattribHits.push(de)
+          if (prof.ctrl > DEADEND_CTRL_WARN && ctrlHits.length < 5) ctrlHits.push(de)
           continue
         }
         const k = stateKey(n)
@@ -604,9 +741,11 @@ function scanReachable(
   return {
     worstWindow: worstWindow === INF ? 0 : worstWindow,
     worstWindowAt,
-    maxDeadEndLatency,
-    maxRawDeadEndLatency,
-    deadEnds,
+    maxMisattribGap,
+    maxDeadEndCtrl,
+    maxDeadEndRaw,
+    misattribHits,
+    ctrlHits,
   }
 }
 
@@ -665,9 +804,11 @@ export function solveStage(stage: StageDef): SolveResult {
     minWindowAt: 0,
     worstWindow: 0,
     worstWindowAt: 0,
-    maxDeadEndLatency: 0,
-    maxRawDeadEndLatency: 0,
-    deadEnds: [],
+    maxMisattribGap: 0,
+    maxDeadEndCtrl: 0,
+    maxDeadEndRaw: 0,
+    misattribHits: [],
+    ctrlHits: [],
     maxChain: 0,
     breathViolations: [],
     climaxD: 0,
@@ -707,7 +848,11 @@ export function solveStage(stage: StageDef): SolveResult {
     }
   }
 
-  const scan = scanReachable(search, stage)
+  // 要求タップ地点の通過フレーム（誤帰属距離の計測に使う）
+  const passFrames = computePassFrames(stage, mm.route)
+  for (let i = 0; i < mm.route.length; i++) mm.route[i].passFrame = passFrames[i]
+
+  const scan = scanReachable(search, stage, passFrames)
   const climax = climaxOf(stage, mm.route, goalFrame(stage))
 
   return {
@@ -719,9 +864,11 @@ export function solveStage(stage: StageDef): SolveResult {
     minWindowAt,
     worstWindow: scan.worstWindow,
     worstWindowAt: scan.worstWindowAt,
-    maxDeadEndLatency: scan.maxDeadEndLatency,
-    maxRawDeadEndLatency: scan.maxRawDeadEndLatency,
-    deadEnds: scan.deadEnds,
+    maxMisattribGap: scan.maxMisattribGap,
+    maxDeadEndCtrl: scan.maxDeadEndCtrl,
+    maxDeadEndRaw: scan.maxDeadEndRaw,
+    misattribHits: scan.misattribHits,
+    ctrlHits: scan.ctrlHits,
     maxChain,
     breathViolations,
     climaxD: climax.d,
@@ -899,13 +1046,14 @@ export function verifyStage(stage: StageDef, budget: StageBudget): VerifyResult 
     })
   }
 
-  // 検査4: 最悪生存窓（警告）。警告時は予告マーカーの設置を義務とする
-  if (solve.worstWindow < WORST_WINDOW_WARN) {
+  // 検査4: 最悪生存窓（警告）。3f **以下** で警告（§14-10 で「未満」から改定）。
+  // 警告時は §7-3 ルールB の予告マーカー設置を義務とする
+  if (solve.worstWindow <= WORST_WINDOW_WARN) {
     const hasWarn = stage.objects.some((o) => o.t === 'warn')
     issues.push({
       level: 'WARN',
       code: 'WORST_WINDOW',
-      message: `最悪生存窓 ${solve.worstWindow}f がしきい値 ${WORST_WINDOW_WARN}f を下回ります（到達率 ${(solve.worstWindowAt * 100).toFixed(1)}%）`,
+      message: `最悪生存窓 ${solve.worstWindow}f がしきい値 ${WORST_WINDOW_WARN}f 以下です（到達率 ${(solve.worstWindowAt * 100).toFixed(1)}%）`,
     })
     if (!hasWarn) {
       issues.push({
@@ -916,24 +1064,30 @@ export function verifyStage(stage: StageDef, budget: StageBudget): VerifyResult 
     }
   }
 
-  // 検査5: 詰み潜伏時間（遅延死）
-  if (solve.maxDeadEndLatency > DEADEND_LATENCY) {
-    const head = solve.deadEnds
-      .map((d) => `${d.latency}f(raw ${d.raw}f)@${(d.at * 100).toFixed(1)}%`)
+  // 検査5: 誤帰属距離（GDD §14-8。旧「詰み潜伏時間 42f 上限」の置換）
+  if (solve.maxMisattribGap > MISATTRIB_GAP_MAX) {
+    const head = solve.misattribHits
+      .map(
+        (d) =>
+          `${d.misattrib}地点 (f${d.frame}→f${d.deathFrame})@${(d.at * 100).toFixed(1)}%`,
+      )
       .join(' / ')
     issues.push({
       level: 'FAIL',
-      code: 'DEADEND',
-      message: `可制御詰み潜伏時間 ${solve.maxDeadEndLatency}f が上限 ${DEADEND_LATENCY}f を超えます（遅延死）: ${head}`,
+      code: 'MISATTRIB',
+      message: `誤帰属距離 ${solve.maxMisattribGap} が上限 ${MISATTRIB_GAP_MAX} を超えます（詰みと死亡の間に成功体験が挟まる＝遅延死）: ${head}`,
     })
   }
-  if (solve.maxRawDeadEndLatency > DEADEND_LATENCY) {
+
+  // 検査5b: 可制御詰み潜伏時間（警告）。詰んでいるのに操作させ続けている時間（§9-5 の摩擦）
+  if (solve.maxDeadEndCtrl > DEADEND_CTRL_WARN) {
+    const head = solve.ctrlHits
+      .map((d) => `${d.ctrl}f@${(d.at * 100).toFixed(1)}%`)
+      .join(' / ')
     issues.push({
       level: 'WARN',
-      code: 'DEADEND_RAW',
-      message:
-        `素の詰み潜伏時間（§14-① 副2 の字義どおりの定義）が ${solve.maxRawDeadEndLatency}f で上限 ${DEADEND_LATENCY}f を超えます。` +
-        'ジャンプで詰みに入る経路は滞空 42f を必ず含むため、この定義は構造的に達成不能。企画 駆に定義の再確認を要請中',
+      code: 'DEADEND_CTRL',
+      message: `可制御詰み潜伏時間 ${solve.maxDeadEndCtrl}f がしきい値 ${DEADEND_CTRL_WARN}f を超えます（詰んでいるのに操作させ続けている）: ${head}`,
     })
   }
 
