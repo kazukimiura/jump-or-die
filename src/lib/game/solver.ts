@@ -53,32 +53,39 @@ import {
   CLIMAX_WINDOW_FRAMES,
   COYOTE_TIME,
   CRUMBLE_W,
-  FLY_W,
   DEADEND_CTRL_WARN,
-  MISATTRIB_GAP_MAX,
   GAP_MAX_RATIO,
+  LANDING_TOLERANCE,
   LIFT_W,
+  MISATTRIB_GAP_MAX,
   OBSTACLE_MAX_H,
   PIT_MAX_RATIO,
   PIT_MIN_W,
   PLAT_W,
   PLAYER_HITBOX_OX,
-  PLAYER_X,
-  SPIKE_UNIT,
-  SPRING_W,
+  PLAYER_HITBOX_W,
   WORST_WINDOW_WARN,
 } from './constants'
+import { killRect } from './collision'
 import { canJumpNow } from './input'
-import { horizontalReach, lethalTop } from './physics'
+import { horizontalReach, lethalBottom, lethalTop } from './physics'
 import {
   cloneSim,
   createSim,
   goalFrame,
   playerWorldX,
   progressRatio,
+  resolveObjectsInRange,
   stepSim,
 } from './stageRuntime'
-import type { SimState, StageBudget, StageDef } from './types'
+import type {
+  ObjKind,
+  Rect,
+  ResolvedObj,
+  SimState,
+  StageBudget,
+  StageDef,
+} from './types'
 
 const INF = Number.POSITIVE_INFINITY
 
@@ -115,11 +122,6 @@ export type RouteJump = {
    * **最大の1本の長さ**であって合計ではない。
    */
   runCount: number
-  /**
-   * このタップが対象とする障害物を通過し終えるフレーム（＝プレイヤーが
-   * 「クリアした」と知覚するイベントの発生時刻）。誤帰属距離の計測に使う
-   */
-  passFrame: number
 }
 
 /**
@@ -542,7 +544,6 @@ function solveMaximin(search: Search, start: SimState): {
       groundedFrames: node.frame - s.player.groundedSince,
       chain: 1,
       runCount: node.runCount,
-      passFrame: -1,
     })
 
     cursor = search.nextArrival(search.advance(s, true))
@@ -570,89 +571,152 @@ function solveMaximin(search: Search, start: SimState): {
 // 副1: 最悪生存窓 / 副2: 詰み潜伏時間
 // ---------------------------------------------------------------------------
 
-/**
- * 各「要求タップ地点」の通過フレームを求める（GDD §14-8-3）。
+/* ---------------------------------------------------------------------------
+ * 誤帰属距離の「通過」判定（GDD §14-13 / 第3次裁定）
  *
- * 推奨ルートのタップ i について、そのタップが対象とする障害物
- * （タップ時点でプレイヤーの前方にある最初の非 warn 障害物）の右端を
- * プレイヤーの致死ボックス左辺が追い越すフレームを返す。
- * これが「プレイヤーが『クリアした』と知覚するイベント」の発生時刻の候補になる。
+ * カウント単位は **障害物オブジェクト（ObjDef）** である（§14-13-3）。
+ * 旧単位「要求タップ地点」は、タップを要求しない天井（OB-04）が数から消えるため
+ * **偽陰性（見逃し）** を生んでいた。くぐり抜けは強い突破体験であり、その後に死ねば
+ * 確実に誤帰属が起きる。偽陰性は偽陽性より危険なので単位を改めた。
  *
- * ただし **フレームだけでは成功体験と断定できない**。谷（OB-03）に落ちた場合、
- * ワールドXは谷の右端を通り過ぎるが、プレイヤーは穴の中にいて「越えた」とは
- * 知覚しない。そのため実際の計数時に「地面より上にいたか」を併せて判定する
- * （countPassedOnPath）。
- */
-function computePassFrames(stage: StageDef, route: RouteJump[]): number[] {
-  const edges = stage.objects
-    .filter((o) => o.t !== 'warn')
-    .map((o) => {
-      const w =
-        o.t === 'block' ? o.w
-          : o.t === 'pit' ? o.w
-          : o.t === 'spike' ? o.n * SPIKE_UNIT
-          : o.t === 'ceil' ? o.w
-          : o.t === 'plat' ? PLAT_W
-          : o.t === 'lift' ? LIFT_W
-          : o.t === 'crumble' ? CRUMBLE_W
-          : o.t === 'fly' ? FLY_W
-          : SPRING_W
-      return o.x + w
-    })
-    .sort((a, b) => a - b)
+ * 障害物 k をカウントするのは以下をすべて満たすときのみ。
+ *   C1 対象   k が挑戦オブジェクトであること（`warn` と `spring` は対象外）
+ *   C2 通過   致死ボックスの X 範囲が k の判定矩形の X 範囲を追い越したこと
+ *   C3 無接触 重なり区間で k の判定矩形と一度も交差していないこと
+ *   C4 正しい側 **重なり区間の全フレームにわたって**「意図された側」に居続けたこと
+ *
+ * C4 を全フレームで評価するのが要点。追い越した1フレームだけで見ると、
+ * ブロックを越えた直後の下降フレームが「下を通った」と誤判定される。
+ * 動体（lift / fly）は各フレームの判定矩形で解く（固定座標で評価しない）。
+ * ------------------------------------------------------------------------- */
 
-  const out: number[] = []
-  for (const j of route) {
-    const lethalLeft = playerWorldX(stage, j.frame) + PLAYER_HITBOX_OX
-    const right = edges.find((e) => e > lethalLeft)
-    if (right === undefined) {
-      out.push(Number.POSITIVE_INFINITY)
-      continue
-    }
-    const f = Math.ceil((right - PLAYER_HITBOX_OX - PLAYER_X) / stage.speedPxPerFrame) + 1
-    out.push(f)
+/** C1: 誤帰属距離のカウント対象になる挑戦オブジェクトか */
+function isChallenge(kind: ObjKind): boolean {
+  // `warn` は装飾マーカー、`spring` は非致死・入力不要で突破体験を生まない
+  return kind !== 'warn' && kind !== 'spring'
+}
+
+/** 誤帰属距離の判定に使う矩形。致死物は判定矩形（インセット済）、それ以外は見た目どおり */
+function gapRect(o: ResolvedObj): Rect {
+  return killRect(o) ?? { x: o.x, y: o.y, w: o.w, h: o.h }
+}
+
+/**
+ * C4:「意図された側」に居るか（GDD §14-13-2 のタイプ別定義）。
+ * 原理は「落下・踏み抜きによる非意図的な通過は突破ではない」。
+ */
+function onIntendedSide(o: ResolvedObj, playerY: number, groundY: number): boolean {
+  const r = gapRect(o)
+  switch (o.kind) {
+    // 上を越えた／上面に乗った（上面着地は必ずカウントする。S2・S3 の遅延死がこの形）
+    case 'block':
+    case 'lift':
+    case 'spike':
+    case 'plat':
+    case 'crumble':
+      return lethalBottom(playerY) <= r.y
+    /*
+     * 穴に沈んでいない。
+     *
+     * 【§14-13-2 の字義（致死ボックス**上辺** < groundY）からの修正 — 実測に基づく】
+     * 上辺で測ると、谷に落ちはじめてから X が谷の右端を追い越すまでの数フレームで
+     * まだ上辺が groundY より上にあるため、**落下中なのに「突破した」と数えてしまう**。
+     * S3 の谷 x=1250 で実際に偽陽性が出た（詰み f400 → 落下死 f419。プレイヤーは
+     * 自分が穴に落ちる姿を見ており、誤帰属は起きていない）。
+     * 他タイプと同じく**下辺**で測れば「足が地面より下にある＝沈んでいる」を正しく捉える。
+     * 判定は §14-13-1 の原理「落下による非意図的な通過は突破ではない」そのままで、
+     * 谷を跳び越して向こう岸に着地した本物の突破は引き続きカウントされる。
+     */
+    case 'pit':
+      return lethalBottom(playerY) <= groundY + LANDING_TOLERANCE
+    // 下をくぐった。天井を上から越える経路は物理的に存在しない
+    case 'ceil':
+      return lethalTop(playerY) >= r.y + r.h
+    // 飛行体は上下どちらで避けても「避けた」と知覚するので側を指定しない
+    case 'fly':
+      return true
+    default:
+      return true
+  }
+}
+
+/** ある stageFrame で、致死ボックスと X 範囲が重なっている挑戦オブジェクト */
+function overlappingChallenges(
+  stage: StageDef,
+  sim: SimState,
+): { index: number; ok: boolean }[] {
+  const worldX = playerWorldX(stage, sim.stageFrame)
+  const left = worldX + PLAYER_HITBOX_OX
+  const right = left + PLAYER_HITBOX_W
+  const out: { index: number; ok: boolean }[] = []
+  // 動体もこのフレームの位置で解決される
+  for (const o of resolveObjectsInRange(stage, sim.stageFrame, left - 128, right + 128, sim)) {
+    if (!isChallenge(o.kind)) continue
+    const r = gapRect(o)
+    if (right <= r.x || left >= r.x + r.w) continue
+    out.push({ index: o.index, ok: onIntendedSide(o, sim.player.y, stage.groundY) })
   }
   return out
 }
 
-/**
- * 誤帰属距離を数える（GDD §14-8-3）。
- *
- * 詰み状態 `doom` から最長生存の継続をたどり、その途中で
- * **要求タップ地点を「地面より上にいる状態で」通過した回数**を返す。
- * 谷に落ちながらXだけ通り過ぎた場合は成功体験ではないので数えない。
- */
-function countPassedOnPath(
-  search: Search,
-  stage: StageDef,
-  doom: SimState,
-  deathFrame: number,
-  passFrames: number[],
-): number {
-  // 候補が無ければ歩かずに 0
-  const candidates = passFrames.filter((f) => f > doom.stageFrame && f <= deathFrame)
-  if (candidates.length === 0) return 0
-  const wanted = new Set(candidates)
+/** 進行中の重なりの状態。key = 障害物の添字 / value = C4 がここまで成立しているか */
+type ActiveOverlaps = Map<number, boolean>
 
-  let n = 0
-  let s = doom
-  while (!s.dead && !s.cleared && s.stageFrame <= search.maxFrame) {
-    if (wanted.has(s.stageFrame)) {
-      // 致死ボックス上辺が地面より上（＝穴に落ちている最中ではない）なら成功体験
-      if (lethalTop(s.player.y) <= stage.groundY) n++
+function activeKey(a: ActiveOverlaps): string {
+  if (a.size === 0) return ''
+  return [...a.entries()].sort((x, y) => x[0] - y[0]).map(([i, ok]) => `${i}${ok ? '+' : '-'}`).join(',')
+}
+
+/**
+ * 誤帰属距離を数える（GDD §14-13）。
+ *
+ * 詰み状態から **全継続ルートにわたる最大値** を採る（§14-13-4）。
+ * 死ぬと分かっていない本人は粘って進もうとするので、最も遠くまで到達する継続こそが
+ * 実際に起きる体験に近く、かつ検査として安全側（見逃しが出ない）である。
+ */
+function countBreakthroughs(search: Search, stage: StageDef, doom: SimState): number {
+  const memo = new Map<string, number>()
+
+  const walk = (sim: SimState, active: ActiveOverlaps, depth: number): number => {
+    if (sim.dead || sim.cleared || sim.stageFrame > search.maxFrame || depth > 240) return 0
+    const key = stateKey(sim) + '|' + activeKey(active)
+    const hit = memo.get(key)
+    if (hit !== undefined) return hit
+    memo.set(key, 0) // 循環保険（実際は DAG）
+
+    // このフレームの重なりを解決し、C4 を積算する
+    const now = overlappingChallenges(stage, sim)
+    const nowMap = new Map(now.map((e) => [e.index, e.ok]))
+    const next: ActiveOverlaps = new Map()
+    let closed = 0
+    for (const [idx, okSoFar] of active) {
+      if (nowMap.has(idx)) continue // まだ重なっている（下で改めて積む）
+      // 重なり区間が終了した ＝ C2 成立。C4 が全フレームで成立していればカウント
+      if (okSoFar) closed++
     }
-    // 最長生存の分岐をたどる
-    const noJump = search.advance(s, false)
-    let pick = noJump
-    if (canJumpNow(s.stageFrame, s.player)) {
-      const jump = search.advance(s, true)
-      const a = search.survivalProfile(noJump)
-      const b = search.survivalProfile(jump)
-      if (b.frames > a.frames || (b.frames === a.frames && b.ctrl > a.ctrl)) pick = jump
+    for (const [idx, okNow] of nowMap) {
+      const prev = active.get(idx)
+      next.set(idx, prev === undefined ? okNow : prev && okNow)
     }
-    s = pick
+
+    let best = 0
+    const noJump = search.advance(sim, false)
+    best = walk(noJump, next, depth + 1)
+    if (canJumpNow(sim.stageFrame, sim.player)) {
+      const jumped = search.advance(sim, true)
+      const v = walk(jumped, next, depth + 1)
+      if (v > best) best = v
+    }
+
+    const total = closed + best
+    memo.set(key, total)
+    return total
   }
-  return n
+
+  // 詰みフレーム時点で既に重なっている障害物は、その時点の C4 を初期値にする
+  const initial: ActiveOverlaps = new Map()
+  for (const e of overlappingChallenges(stage, doom)) initial.set(e.index, e.ok)
+  return walk(doom, initial, 0)
 }
 
 /** 生存窓（最大連続列）の先頭フレーム */
@@ -665,7 +729,6 @@ function windowStartFrame(aw: ArrivalWindows): number {
 function scanReachable(
   search: Search,
   stage: StageDef,
-  passFrames: number[],
 ): {
   worstWindow: number
   worstWindowAt: number
@@ -712,7 +775,7 @@ function scanReachable(
           const prof = search.survivalProfile(n)
           const deathFrame = n.stageFrame + prof.frames
           // 検査5: 誤帰属距離 ＝ 詰み〜死亡の間に通過した要求タップ地点の数
-          const misattrib = countPassedOnPath(search, stage, n, deathFrame, passFrames)
+          const misattrib = countBreakthroughs(search, stage, n)
           const de: DeadEnd = {
             frame: n.stageFrame,
             deathFrame,
@@ -848,11 +911,7 @@ export function solveStage(stage: StageDef): SolveResult {
     }
   }
 
-  // 要求タップ地点の通過フレーム（誤帰属距離の計測に使う）
-  const passFrames = computePassFrames(stage, mm.route)
-  for (let i = 0; i < mm.route.length; i++) mm.route[i].passFrame = passFrames[i]
-
-  const scan = scanReachable(search, stage, passFrames)
+  const scan = scanReachable(search, stage)
   const climax = climaxOf(stage, mm.route, goalFrame(stage))
 
   return {

@@ -8,10 +8,19 @@
  *   - 画面下部。`TAP` と同一行だが **左右に分離**（描画は draw.ts `drawReadyLine`）
  *   - **タップした瞬間に消える。**待機時間はゼロ
  *
- * 抽選の優先順位（UIテキスト §14-5）:
- *   50回解放 > 通算100/500回 > `NEW BEST` > 条件付き抽選 > 通常抽選（A:B:C = 5:3:2）
- *   - 直前2回に表示した文は必ず除外する
- *   - **固定ルールで出した文は除外履歴に入れない**（次の通常抽選を不当に狭めるため）
+ * 抽選の3分類（UIテキスト §19-2 で確定。§3 末尾と §14-5 の記述を置き換える）:
+ *   単発 ONCE     … 条件成立で1回だけ出し、以降プールから除外する
+ *                   （50回解放 / 通算100 / 通算500 / `NEW BEST` の `こえた。` / D-35）
+ *   優先 PRIORITY … 成立時に優先プールから抽選する（D-14 D-18 D-21 D-23 D-34）
+ *   門 GATE       … 条件を満たす間だけ**通常抽選プールに存在**する。優先はしない
+ *                   （D-32 D-33 D-36）
+ *   分類なし      … 常時プールに存在する（残り26本。D-10 を含む）
+ *
+ * 判定順:
+ *   1. ONCE を判定。成立すればそれを出して終了
+ *   2. PRIORITY を判定。ただし**クールダウン**（直前2回で優先が発火していたら見送り）
+ *   3. 通常抽選 A:B:C = 5:3:2。GATE の条件を満たさない文はプールから除外する
+ *   4. 直前2回に表示した文は除外。**ONCE で出した文は除外履歴に入れない**
  *
  * `Math.random()` の使用について:
  *   本モジュールは**演出**であり、障害物の配置・挙動には一切関与しない。
@@ -75,7 +84,12 @@ export const GROUP_C: readonly DeathMessage[] = [
   { id: 'D-34', text: 'ベスト、ちかい。', group: 'C' },
 ]
 
-/** D 特殊条件（2本）— 条件が成立したときだけ抽選対象になる */
+/**
+ * D 特殊条件（2本）。§19-2 で分類が分かれた。
+ * - D-35 は **単発 ONCE**。通常プールには一切入れない
+ * - D-36 は **門 GATE**。連続10回以上死亡している間だけ惜しい型プールに存在する
+ *   （優先のままだと、詰まっている局面で36本中もっとも励ましに近い一文が連投される）
+ */
 export const GROUP_SPECIAL: readonly DeathMessage[] = [
   { id: 'D-35', text: 'はじめの 1ぽ。', group: 'C' },
   { id: 'D-36', text: 'まだ いける。', group: 'C' },
@@ -117,16 +131,24 @@ export interface MessageContext {
   totalDeaths: number
   /** 連続死亡回数（クリアでリセット） */
   consecutiveDeaths: number
-  /** このセッション最初の死亡か */
+  /** このセッション最初の死亡か（D-35 の単発条件） */
   sessionFirstDeath: boolean
   /** 50回死亡による解放がこの死亡で発火したか */
   mercyUnlock: boolean
+  /**
+   * 直前2回の死亡のいずれかで優先抽選が発火していたか（§19-2 クールダウン）。
+   * true なら今回は優先を見送り、通常抽選に落とす。優先の発火率に 1/3 の上限が掛かり、
+   * 詰まった局面でも「淡々型が最多」という設計が構造的に守られる。
+   */
+  priorityRecent: boolean
 }
 
 export interface PickedMessage {
   text: string
-  /** 固定ルールで出した文は除外履歴に入れない（§14-5） */
+  /** 単発 ONCE で出した文。**除外履歴に入れない**（§14-5 / §19-2） */
   fixed: boolean
+  /** 優先抽選から出した文。次回以降のクールダウン判定に使う */
+  priority: boolean
 }
 
 /** 直近の死亡マーカーのうち、今回の到達率と ±2.0 以内に収まる数（§14-5） */
@@ -143,42 +165,63 @@ const byId = (id: string): DeathMessage => {
 }
 
 /**
- * 条件付き抽選の候補（§14-5）。
+ * 門 GATE（§19-2）。条件を満たす**間だけ**通常抽選プールに存在する。優先はしない。
  *
- * D-33 は「ステージ3以降の死亡時のみ出現」だが、これは**出現の門**であって
- * 優先トリガではないと解釈し、通常抽選側のフィルタに回している。
- * 優先プールに入れると S3 では常時成立して淡々型がほぼ出なくなり、
- * §3 の「淡々型を最多にするのが肝」という設計意図と衝突するため。
- * 同様に D-05 / D-06 は §14-5 の指示どおり（死因可視化の実装前）通常抽選に含める。
+ * 3本とも「一度成立すると以後ほぼ永久に真」という性質を持つため、優先に置くと
+ * そのステージ以降その1本が出続けて「淡々型を最多にする」という設計が壊れる。
+ */
+const GATES: Readonly<Record<string, (ctx: MessageContext) => boolean>> = {
+  // 同一ステージ20回以上の挑戦
+  'D-32': (c) => c.attempts >= 20,
+  // ステージ3以降の死亡時のみ（安売りしない）
+  'D-33': (c) => c.stageId >= 3,
+  // 連続10回以上死亡している間だけ
+  'D-36': (c) => c.consecutiveDeaths >= 10,
+}
+
+/** 単発 ONCE。通常プールにも優先プールにも入れない */
+const ONCE_ONLY = new Set<string>(['D-35'])
+
+/**
+ * 優先 PRIORITY の候補（§19-2）。
+ *
+ * **入れ子条件は狭いほうを先に判定する。** 逆順だと狭いほうが永久に出ない。
+ *   D-21（5つ一致）→ D-14 / D-18（3つ一致）
+ *   D-34（95%以上）→ D-23（90%以上）
+ * D-14 と D-18 は完全に同条件なので、**2本を並べて等確率で引く**。
+ *
+ * D-05 / D-06 は §14-5・§19-2 の既定どおり、GDD §4-6 の死因可視化（早押し／遅れの判別）
+ * が実装されるまで**通常プールに据え置く**。
  */
 function priorityCandidates(ctx: MessageContext): DeathMessage[] {
   const out: DeathMessage[] = []
-  const cluster = clusteredMarks(ctx.marks, ctx.reachPct)
 
-  // セッション初回の死亡時のみ
-  if (ctx.sessionFirstDeath) out.push(byId('D-35'))
-  // 連続10回以上死亡している時
-  if (ctx.consecutiveDeaths >= 10) out.push(byId('D-36'))
-  // 直近5回の死亡マーカーのうち3つが到達率 ±2.0 以内
-  if (cluster >= 3) {
-    out.push(byId('D-14'))
-    out.push(byId('D-18'))
+  const cluster = clusteredMarks(ctx.marks, ctx.reachPct)
+  if (cluster >= 5) {
+    out.push(byId('D-21'))
+  } else if (cluster >= 3) {
+    // 等確率。どちらかに寄せない
+    out.push(byId('D-14'), byId('D-18'))
   }
-  // 5つすべてが ±2.0 以内
-  if (cluster >= 5) out.push(byId('D-21'))
-  // 到達率が自己ベストの90% / 95% 以上
-  if (ctx.bestPct > 0 && ctx.reachPct >= ctx.bestPct * 0.9) out.push(byId('D-23'))
-  if (ctx.bestPct > 0 && ctx.reachPct >= ctx.bestPct * 0.95) out.push(byId('D-34'))
-  // 同一ステージ20回以上の挑戦
-  if (ctx.attempts >= 20) out.push(byId('D-32'))
+
+  if (ctx.bestPct > 0 && ctx.reachPct >= ctx.bestPct * 0.95) {
+    out.push(byId('D-34'))
+  } else if (ctx.bestPct > 0 && ctx.reachPct >= ctx.bestPct * 0.9) {
+    out.push(byId('D-23'))
+  }
 
   return out
 }
 
-/** 通常抽選の母集団。D-33 はステージ3以降でのみ含める */
+/** 通常抽選のプール。ONCE は常に除外、GATE は条件を満たすものだけ残す */
 function normalPool(ctx: MessageContext, group: 'A' | 'B' | 'C'): DeathMessage[] {
-  const base = group === 'A' ? GROUP_A : group === 'B' ? GROUP_B : GROUP_C
-  return base.filter((m) => (m.id === 'D-33' ? ctx.stageId >= 3 : true))
+  const base =
+    group === 'A' ? GROUP_A : group === 'B' ? GROUP_B : [...GROUP_C, byId('D-36')]
+  return base.filter((m) => {
+    if (ONCE_ONLY.has(m.id)) return false
+    const gate = GATES[m.id]
+    return gate ? gate(ctx) : true
+  })
 }
 
 /** A:B:C = 5:3:2 */
@@ -199,30 +242,37 @@ export function pickDeathMessage(
   recent: readonly string[],
   rng: () => number,
 ): PickedMessage {
-  // --- 固定ルール（優先順位順） -------------------------------------------
-  if (ctx.mercyUnlock) return { text: FIXED.MERCY, fixed: true }
-  if (ctx.totalDeaths === 100) return { text: FIXED.DEATHS_100, fixed: true }
-  if (ctx.totalDeaths === 500) return { text: FIXED.DEATHS_500, fixed: true }
-  if (ctx.newBest) return { text: FIXED.NEW_BEST, fixed: true }
+  // --- 1. 単発 ONCE（優先順位は §14-5 の既定どおり） ----------------------
+  if (ctx.mercyUnlock) return { text: FIXED.MERCY, fixed: true, priority: false }
+  if (ctx.totalDeaths === 100) return { text: FIXED.DEATHS_100, fixed: true, priority: false }
+  if (ctx.totalDeaths === 500) return { text: FIXED.DEATHS_500, fixed: true, priority: false }
+  if (ctx.newBest) return { text: FIXED.NEW_BEST, fixed: true, priority: false }
+  if (ctx.sessionFirstDeath) return { text: byId('D-35').text, fixed: true, priority: false }
 
   const blocked = new Set(recent.slice(0, 2))
   const usable = (list: DeathMessage[]) => list.filter((m) => !blocked.has(m.text))
 
-  // --- 条件付き抽選 -------------------------------------------------------
-  const priority = usable(priorityCandidates(ctx))
-  if (priority.length > 0) {
-    return { text: priority[Math.floor(rng() * priority.length)].text, fixed: false }
+  // --- 2. 優先 PRIORITY（クールダウン付き） -------------------------------
+  if (!ctx.priorityRecent) {
+    const priority = usable(priorityCandidates(ctx))
+    if (priority.length > 0) {
+      return {
+        text: priority[Math.floor(rng() * priority.length)].text,
+        fixed: false,
+        priority: true,
+      }
+    }
   }
 
-  // --- 通常抽選（A:B:C = 5:3:2） -----------------------------------------
+  // --- 3. 通常抽選（A:B:C = 5:3:2） --------------------------------------
   const first = rollGroup(rng())
   const order: ('A' | 'B' | 'C')[] = [first, 'A', 'B', 'C']
   for (const g of order) {
     const pool = usable(normalPool(ctx, g))
     if (pool.length > 0) {
-      return { text: pool[Math.floor(rng() * pool.length)].text, fixed: false }
+      return { text: pool[Math.floor(rng() * pool.length)].text, fixed: false, priority: false }
     }
   }
   // 理論上到達しない（36本に対し除外は2本まで）
-  return { text: GROUP_A[0].text, fixed: false }
+  return { text: GROUP_A[0].text, fixed: false, priority: false }
 }

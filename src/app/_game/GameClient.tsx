@@ -37,6 +37,7 @@ import {
   queueKey,
   queueTap,
   setHidden,
+  setViewScale,
   takeSfx,
   type App,
 } from './app'
@@ -90,6 +91,7 @@ export default function GameClient() {
       computeScale(window.innerWidth, window.innerHeight),
       window.devicePixelRatio || 1,
     )
+    setViewScale(app, setup.scale)
 
     const resize = () => {
       setup = configureMainCanvas(
@@ -97,6 +99,8 @@ export default function GameClient() {
         computeScale(window.innerWidth, window.innerHeight),
         window.devicePixelRatio || 1,
       )
+      // 離脱導線のタップ判定を 44 CSS px 以上に保つための換算（GDD §14-16-3）
+      setViewScale(app, setup.scale)
     }
 
     /** クライアント座標 → 論理座標（320×180）。canvas 外の余白は汎用タップ扱い */

@@ -131,12 +131,23 @@ export interface App {
 
   /** 直近に出した死亡メッセージ（新しい順・2本まで参照） */
   recentMessages: string[]
+  /** 直近2回の死亡で優先抽選が発火したか（新しい順）。UIテキスト §19-2 のクールダウン */
+  priorityHistory: boolean[]
   /** このセッションで一度でも死んだか */
   sessionDied: boolean
   /** 連続死亡回数（クリアでリセット） */
   consecutiveDeaths: number
   /** そのステージで初回入場かどうか（`STAGE n` バナーの出し分け） */
   freshEntry: boolean
+
+  /**
+   * 死亡後の `READY` に入ってからタップが無いフレーム数（GDD §14-16-3 アイドル顕在化）。
+   * 90f で `← STAGES` がフェードインし始め、+18f で操作可能になる。
+   * **`RUNNING` 中は一切参照しない。**
+   */
+  readyIdle: number
+  /** 現在の整数倍スケール。44 CSS px の判定領域を論理座標へ換算するのに使う */
+  viewScale: number
 
   /** 入力キュー。イベントハンドラはここに積むだけ（憲法4） */
   taps: { x: number; y: number }[]
@@ -179,6 +190,17 @@ const HIT_SELECT_CARDS: readonly HitRect[] = [
   { x: 116, y: 56, w: 88, h: 72 },
   { x: 216, y: 56, w: 88, h: 72 },
 ]
+/**
+ * 死亡後 `READY` の離脱導線 `← STAGES`（GDD §14-16-3 アイドル顕在化）。
+ * 描画は HUD 帯左端の 56×12px（`ST nn` と差し替え・透B担当）。
+ */
+const EXIT_REVEAL_IDLE = 90 // 1.5 秒タップが無いと現れはじめる
+const EXIT_REVEAL_FADE = 18 // フェードイン 300ms。**完了後のみ**タップを受け付ける
+const EXIT_DRAW_W = 56
+const EXIT_DRAW_H = 12
+/** 判定領域の最低サイズ（CSS px）。論理 12px は等倍表示では指で押せない */
+const EXIT_MIN_CSS = 44
+
 /** RESULT の `RETRY`（描画は 8,168 F3X5） */
 const HIT_RESULT_RETRY: HitRect = { x: 0, y: 158, w: 76, h: 22 }
 /** RESULT の `STAGES`（描画は右寄せ 312,168） */
@@ -209,6 +231,9 @@ export function createApp(deps: AppDeps): App {
     simTap: false,
     paused: false,
     recentMessages: [],
+    priorityHistory: [],
+    readyIdle: 0,
+    viewScale: 1,
     sessionDied: false,
     consecutiveDeaths: 0,
     freshEntry: true,
@@ -271,7 +296,12 @@ export function advanceFrame(app: App): void {
       stepDeath(app)
       break
     case 'READY':
-      if (app.death) app.death.frame++ // 到達率表示（400ms / 600ms）を進める
+      if (app.death) {
+        app.death.frame++ // 到達率表示（400ms / 600ms）を進める
+        // 死亡後の READY だけがアイドルタイマーを回す（GDD §14-16-3）。
+        // 連打している人の前には現れないので、憲法3 の「摩擦ゼロのリトライ」は損なわれない
+        app.readyIdle++
+      }
       break
     default:
       break
@@ -307,6 +337,7 @@ function stepDeath(app: App): void {
     // 300ms 経過。ステージ先頭へリセットし、入力受付を開始する
     resetSim(app.stage, app.sim)
     app.phase = 'READY'
+    app.readyIdle = 0
     if (app.pendingStart) {
       app.pendingStart = false
       startRun(app)
@@ -320,6 +351,19 @@ function stepDeath(app: App): void {
 
 function dispatchTap(app: App, x: number, y: number): void {
   const isBack = x < 0
+
+  // タブ復帰（GDD §12-1 / UIテキスト §19-3）。
+  // 復帰のタップはジャンプに使わない。試行回数も進捗バーも動かさず、
+  // 止まった盤面のまま続きを再開するだけ。
+  if (app.paused) {
+    if (isBack) {
+      app.paused = false
+      app.phase = 'SELECT'
+      return
+    }
+    app.paused = false
+    return
+  }
 
   switch (app.phase) {
     case 'TITLE':
@@ -361,10 +405,14 @@ function dispatchTap(app: App, x: number, y: number): void {
         app.phase = 'SELECT'
         return
       }
-      if (app.paused) {
-        app.paused = false // 復帰のタップはジャンプに使わない（GDD §12-1）
+      // 離脱導線はフェードイン完了後のみ反応する。それ以外の全領域・全タイミングは
+      // 従来どおりリトライ（GDD §14-16-3）
+      if (exitTappable(app) && inRect(exitHitRect(app), x, y)) {
+        app.phase = 'SELECT'
+        app.readyIdle = 0
         return
       }
+      app.readyIdle = 0
       startRun(app)
       return
 
@@ -419,6 +467,7 @@ function enterStage(app: App, id: number): void {
   app.simTap = false
   app.paused = false
   app.freshEntry = true
+  app.readyIdle = 0
   app.attempts = stageRecord(app.save, id).try
   app.banner = { text: `STAGE ${id}`, until: app.uiFrame + BANNER_STAGE_FRAMES }
   app.save.last = id
@@ -470,11 +519,14 @@ function enterDeath(app: App): void {
     consecutiveDeaths: app.consecutiveDeaths,
     sessionFirstDeath: !app.sessionDied,
     mercyUnlock,
+    // 直前2回のいずれかで優先が発火していたら、今回は優先を見送る（UIテキスト §19-2）
+    priorityRecent: app.priorityHistory.some(Boolean),
   }
   const picked = pickDeathMessage(ctx, app.recentMessages, app.deps.random)
   app.readyMessage = picked.text
-  // 固定ルールで出した文は除外履歴に入れない（UIテキスト §14-5）
+  // 単発 ONCE で出した文は除外履歴に入れない（UIテキスト §14-5 / §19-2）
   if (!picked.fixed) app.recentMessages = [picked.text, ...app.recentMessages].slice(0, 2)
+  app.priorityHistory = [picked.priority, ...app.priorityHistory].slice(0, 2)
   app.readyUnlock = mercyUnlock
     ? ([`STAGE ${pad2(app.stage.id + 1)}`, 'UNLOCKED'] as const)
     : null
@@ -532,6 +584,48 @@ function unlockNext(app: App, id: number): boolean {
   if (rec.unlock) return false
   rec.unlock = true
   return true
+}
+
+/**
+ * 離脱導線 `← STAGES` の顕在度 0–1（GDD §14-16-3）。
+ * 0 = 描かない / 0〜1 = フェードイン中（描画層はディザ2段で表現・アルファ合成は使わない）
+ * / 1 = 顕在。**タップを受け付けるのは 1 のときだけ。**
+ */
+export function exitReveal(app: App): number {
+  if (app.phase !== 'READY' || app.paused || !app.death) return 0
+  if (app.readyIdle < EXIT_REVEAL_IDLE) return 0
+  // 90f 目を 1/18（ディザ第1段）とし、18 フレームかけて 107f で描画が完成する
+  const t = app.readyIdle - EXIT_REVEAL_IDLE + 1
+  return Math.min(1, t / EXIT_REVEAL_FADE)
+}
+
+/**
+ * フェードイン完了後のみ操作できる。
+ * 描画の完成（107f）より 1 フレーム遅らせて 108f（= 90 + 18）から受け付ける。
+ * 「フェードイン完了後のみ」を厳密に満たすための安全側のマージン。
+ */
+export function exitTappable(app: App): boolean {
+  return (
+    app.phase === 'READY' &&
+    !app.paused &&
+    app.death !== null &&
+    app.readyIdle >= EXIT_REVEAL_IDLE + EXIT_REVEAL_FADE
+  )
+}
+
+/**
+ * 離脱導線のタップ判定領域（論理座標）。
+ * キャンバス左上を起点に**最低 44×44 CSS px**を確保し、描画領域 56×12px を内包する。
+ * タイミング要求がゼロの場面なので、判定を描画より広げても副作用は無い。
+ */
+export function exitHitRect(app: App): { x: number; y: number; w: number; h: number } {
+  const min = EXIT_MIN_CSS / Math.max(1, app.viewScale)
+  return { x: 0, y: 0, w: Math.max(EXIT_DRAW_W, min), h: Math.max(EXIT_DRAW_H, min) }
+}
+
+/** 整数倍スケールが変わったら知らせる（判定領域の CSS px 換算に使う） */
+export function setViewScale(app: App, scale: number): void {
+  app.viewScale = Math.max(1, Math.floor(scale))
 }
 
 /** タブが隠れたら即ポーズ。復帰時はタップで再開する（GDD §12-1） */
