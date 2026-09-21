@@ -1,0 +1,143 @@
+# ============================================================================
+# JumpOrDie 本番デプロイ（静的エクスポート → FTPS）
+# 公開先: https://kzkmr.net/apps/jump-or-die/
+#
+# 社内標準 kazukimiura/kzkmr の deploy-production.yml を JumpOrDie 向けに適応。
+# kzkmr.net 配下のアプリは 1アプリ 1リポジトリで、それぞれが自分の
+# apps/<アプリ名>/ だけに転送する。この workflow も同じ流儀。
+#
+# ----------------------------------------------------------------------------
+# 必要な設定（リポジトリ Settings → Secrets and variables → Actions）
+# ----------------------------------------------------------------------------
+#   [Secrets]（値は絶対にコミットしない。登録は人間が GitHub の画面で行う）
+#     PROD_FTP_SERVER     … FTPサーバーのホスト名
+#     PROD_FTP_USERNAME   … FTPユーザー名
+#     PROD_FTP_PASSWORD   … FTPパスワード
+#
+#   [Variables]（パスは秘匿不要。ログに出るので dry-run で目視確認できる）
+#     PROD_FTP_SERVER_DIR … アップロード先。このサーバーはログイン直下がサーバールートで
+#                           ドメインごとにフォルダが並ぶため `kzkmr.net/apps/jump-or-die/`。
+#                           末尾スラッシュ必須。先頭スラッシュは付けない
+#     PROD_DEPLOY_DRY_RUN … 最初は 'true' で登録。宛先をログで確認してから 'false' へ
+#     PROD_FTP_PROTOCOL   … 省略可（既定 ftps。つながらないとき ftps-legacy / ftp）
+#
+#   ※ AdSense 関連の Variables は不要。本ページは社長裁定（2026-09-21）により
+#      Auto ads を読み込まない。詳細は src/app/layout.tsx 冒頭のコメントを参照。
+#      環境変数もビルドに不要なため、Build ステップに env は渡していない
+#
+# ----------------------------------------------------------------------------
+# 事故防止のための約束（過去の運用ルール。変更しないこと）
+# ----------------------------------------------------------------------------
+#  1. 転送先 kzkmr.net/ の下には本体サイトと apps/（複数ゲーム・別リポジトリ）が
+#     同居している。この workflow は削除を一切行わない設定なので他を消さないが、
+#     dangerous-clean-slate を有効にすると消える。絶対に有効化しないこと
+#  2. mirror --delete 相当の同期は行わない（FTP-Deploy-Action は既定で削除しない）
+#  3. server-dir が空文字だと FTP アクションがサーバールート直下へ展開し、
+#     他ドメインまで巻き込む。Verify deploy target で事前に落とす
+#  4. 転送先はファイルに直書きせず Variables で渡す（環境ごとの差し替えを可能にし、
+#     かつ値の確認をログに一本化するため）
+#  5. 初回は dry-run で宛先とファイル一覧を目視確認してから本転送に切り替える
+# ============================================================================
+name: Deploy 本番
+
+on:
+  # main への push＝本番へ反映
+  push:
+    branches: [main]
+  # 手動実行。dry_run にチェックを入れると転送せず対象一覧だけを出す
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "dry-run（転送せず、対象ファイルと転送先だけをログ出力）"
+        type: boolean
+        default: false
+
+concurrency:
+  # 転送中キャンセルはサーバーが中途半端な状態で残るため cancel-in-progress は false
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # npm の prebuild フックで scripts/verify-stages.ts が自動的に先に走る。
+      # 全ステージの突破可能性・生存窓・詰みを検査する仕組みで、クリア不能な
+      # ステージが本番に出るのを防ぐための意図的な設計。
+      # 検査が落ちればこのステップごと失敗する。絶対に迂回させないこと
+      # （`next build` を直接呼ぶ／`--ignore-scripts` を付ける、などをしない）
+      - name: Build（prebuild でステージ検査 → next build）
+        run: npm run build
+
+      # 空の out/ を転送すると公開ページが壊れる。FTP に進む前にここで止める
+      - name: Verify build output
+        run: |
+          if [ ! -f out/index.html ]; then
+            echo "::error::out/index.html がありません。静的エクスポートに失敗している可能性があります。"
+            exit 1
+          fi
+          echo "出力ファイル数: $(find out -type f | wc -l)"
+          echo "出力サイズ    : $(du -sh out | cut -f1)"
+
+      # server-dir が未設定（空文字）だと FTP アクションがルート直下に展開してしまう。
+      # このサーバーはルートに他ドメインのフォルダが並ぶため、事故が特に大きい
+      - name: Verify deploy target
+        env:
+          SERVER_DIR: ${{ vars.PROD_FTP_SERVER_DIR }}
+        run: |
+          if [ -z "$SERVER_DIR" ]; then
+            echo "::error::Variables に PROD_FTP_SERVER_DIR が未登録です（Settings → Secrets and variables → Actions → Variables）。ルート直下への展開を防ぐため中断します。"
+            exit 1
+          fi
+          case "$SERVER_DIR" in
+            */) ;;
+            *) echo "::error::PROD_FTP_SERVER_DIR は末尾スラッシュが必須です（現在: $SERVER_DIR）"; exit 1 ;;
+          esac
+          case "$SERVER_DIR" in
+            /*) echo "::error::PROD_FTP_SERVER_DIR は先頭スラッシュを付けません。ログイン直下からの相対パスで指定してください（現在: $SERVER_DIR）"; exit 1 ;;
+          esac
+          case "$SERVER_DIR" in
+            *..*) echo "::error::PROD_FTP_SERVER_DIR に '..' は使えません（現在: $SERVER_DIR）"; exit 1 ;;
+          esac
+          # 本リポジトリはアプリ1本ぶんだけを配る。転送先が浅すぎる（＝ドメイン直下や
+          # サーバールート）場合、本体サイトを上書きする事故になるため落とす。
+          # 想定は `<ドメイン>/apps/<アプリ名>/` で階層は3。アプリ名を直書きしないための構造チェック
+          DEPTH=$(printf '%s' "${SERVER_DIR%/}" | awk -F'/' '{print NF}')
+          if [ "$DEPTH" -lt 3 ]; then
+            echo "::error::PROD_FTP_SERVER_DIR が浅すぎます（階層 $DEPTH）。本体サイトを上書きする恐れがあるため中断します。'<ドメイン>/apps/<アプリ名>/' の形で指定してください（現在: $SERVER_DIR）"
+            exit 1
+          fi
+          echo "転送先ディレクトリ: $SERVER_DIR"
+
+      - name: Deploy via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.PROD_FTP_SERVER }}
+          username: ${{ secrets.PROD_FTP_USERNAME }}
+          password: ${{ secrets.PROD_FTP_PASSWORD }}
+          # 接続方式（既定 ftps）。ftps: 明示的FTPS(21) / ftps-legacy: 暗黙的FTPS(990) / ftp: 平文（最終手段）
+          protocol: ${{ vars.PROD_FTP_PROTOCOL || 'ftps' }}
+          # データ接続が不安定なサーバー向けに既定より長めに取る
+          timeout: 60000
+          # local-dir / server-dir はどちらも末尾スラッシュ必須
+          local-dir: ./out/
+          server-dir: ${{ vars.PROD_FTP_SERVER_DIR }}
+          # 同居している本体サイト・他アプリを消さないための保険。絶対に true にしないこと
+          dangerous-clean-slate: false
+          # dry-run: 手動実行のチェック、または Variables の PROD_DEPLOY_DRY_RUN が 'true'。
+          # 初回は Variables を 'true' にして宛先をログで確認 → 'false' に変更（コミット不要）
+          dry-run: ${{ inputs.dry_run || vars.PROD_DEPLOY_DRY_RUN == 'true' }}
+          log-level: ${{ (inputs.dry_run || vars.PROD_DEPLOY_DRY_RUN == 'true') && 'verbose' || 'standard' }}
