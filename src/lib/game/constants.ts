@@ -186,8 +186,29 @@ export const FLY_LOOKAHEAD_WARN_FRAMES = 24
 
 // == 新指標（GDD §15-7-3） ================================================
 
-/** 狭窓密度の対象となる生存窓の上限 10f (167ms) */
-export const TIGHT_WINDOW_FRAMES = 10
+/**
+ * 狭窓密度の対象となる生存窓のしきい値（GDD §15-14）。
+ *
+ * **固定 10f をやめ「その章の生存窓 下限 + 2f」にする。**
+ * 固定値だと、下限が 11f の章では原理的に 0 にしかならず**指標が死ぬ**。
+ * 指標が 0 にしかならないとき、疑うべきは配置ではなく指標である。
+ */
+export const TIGHT_WINDOW_MARGIN = 2
+export function tightWindowThreshold(windowMinFrames: number): number {
+  return windowMinFrames + TIGHT_WINDOW_MARGIN
+}
+
+/**
+ * トゲ床の幅の上限（GDD §5-3 新設）。`8n <= 水平到達距離 x 0.85`。
+ * トゲは**上面に乗れない唯一の高さ持ち障害物**で、幅を伸ばすほど窓が縮む。
+ * 単一オブジェクトなので誤帰属距離は 0 のまま保てる。
+ */
+export const SPIKE_MAX_WIDTH_RATIO = 0.85
+
+/** 同一 worldX 区間に重ねてよい着地可能面の数（本線＋迂回の2つまで。§5-3 新設） */
+export const MAX_OVERLAPPING_SURFACES = 2
+/** 同時に起動中になりうる崩落床の数の上限（§5-3 新設） */
+export const MAX_CONCURRENT_CRUMBLE = 3
 
 // == 配置上限（GDD §5-3） ==================================================
 

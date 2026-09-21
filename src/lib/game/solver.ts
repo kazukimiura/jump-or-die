@@ -52,6 +52,8 @@ import {
   CLIMAX_NORM_FRAMES,
   CLIMAX_WINDOW_FRAMES,
   COYOTE_TIME,
+  CRUMBLE_DELAY,
+  CRUMBLE_FALL_FRAMES,
   CRUMBLE_W,
   DEADEND_CTRL_WARN,
   GAP_MAX_RATIO,
@@ -69,11 +71,16 @@ import {
   SPEAR_H_PRACTICAL_MAX,
   SPEAR_RISE_MAX,
   SPEAR_RISE_MIN,
+  SPIKE_UNIT,
   SWING_AMP_MAX,
   SWING_AMP_MIN,
   SWING_PERIOD_MAX,
   SWING_PERIOD_MIN,
-  TIGHT_WINDOW_FRAMES,
+  SWING_W,
+  MAX_CONCURRENT_CRUMBLE,
+  MAX_OVERLAPPING_SURFACES,
+  SPIKE_MAX_WIDTH_RATIO,
+  tightWindowThreshold,
   WALL_MIN_H,
   WALL_STEP_HEADROOM,
   WALL_STEP_MIN_GROUND_FRAMES,
@@ -1011,7 +1018,7 @@ function climaxOf(
 // ステージを解く
 // ---------------------------------------------------------------------------
 
-export function solveStage(stage: StageDef): SolveResult {
+export function solveStage(stage: StageDef, windowMinFrames = 10): SolveResult {
   const search = new Search(stage)
   const start = createSim(stage)
   const total = search.minTaps(start)
@@ -1074,7 +1081,7 @@ export function solveStage(stage: StageDef): SolveResult {
 
   const scan = scanReachable(search, stage)
   const climax = climaxOf(stage, mm.route, goalFrame(stage))
-  const metrics = stageMetrics(stage, mm.route)
+  const metrics = stageMetrics(stage, mm.route, windowMinFrames)
 
   return {
     feasible: true,
@@ -1114,11 +1121,13 @@ export function solveStage(stage: StageDef): SolveResult {
 function stageMetrics(
   stage: StageDef,
   route: RouteJump[],
+  windowMinFrames: number,
 ): { tightDensity: number; suppressRatio: number; compositeRatio: number } {
   const seconds = stage.lengthPx / stage.speedPxPerFrame / 60
 
-  // 狭窓密度: 生存窓 10f 以下のジャンプ本数 / ステージ長(秒)
-  const tight = route.filter((j) => j.window <= TIGHT_WINDOW_FRAMES).length
+  // 狭窓密度: 生存窓が「章の下限 + 2f」以下のジャンプ本数 / ステージ長(秒)
+  const threshold = tightWindowThreshold(windowMinFrames)
+  const tight = route.filter((j) => j.window <= threshold).length
   const tightDensity = seconds > 0 ? tight / seconds : 0
 
   // 抑制率: 「跳んではいけない障害物」の数 / 全挑戦オブジェクト数
@@ -1217,6 +1226,104 @@ function blockHeightIssues(o: BlockObj): CheckIssue[] {
     ]
   }
   return []
+}
+
+/**
+ * §5-3 に新設された配置上限（GDD §15-14）。
+ *
+ * - トゲ床の幅 `8n <= 水平到達距離 x 0.85`。**上面に乗れない唯一の高さ持ち障害物**であり、
+ *   幅で窓を締められる代わりに、伸ばしすぎると突破不能になる
+ * - **同一 worldX 区間に着地可能面を3つ以上重ねない**（2つまで＝本線＋迂回）
+ * - **同時に起動中になりうる崩落床は3個以下**
+ *
+ * 後ろ2条は探索の状態爆発を防ぐための技術的制約であると同時に、設計原則としても正しい。
+ * 本作は1本の正解ラインを暗記するゲームで、3本以上のルートが並ぶと暗記の対象が発散する。
+ * **検査できない設計は、たいてい遊べない設計でもある。**
+ */
+function catalogLimits(stage: StageDef): CheckIssue[] {
+  const issues: CheckIssue[] = []
+  const reach = horizontalReach(stage.speedPxPerFrame)
+
+  // トゲ床の幅
+  const spikeMax = Math.floor((reach * SPIKE_MAX_WIDTH_RATIO) / SPIKE_UNIT)
+  for (const o of stage.objects) {
+    if (o.t !== 'spike') continue
+    if (o.n > spikeMax) {
+      issues.push({
+        level: 'FAIL',
+        code: 'SPIKE_N',
+        message: `トゲ床の連数 ${o.n}（幅 ${o.n * SPIKE_UNIT}px）が上限 ${spikeMax}（幅 ${spikeMax * SPIKE_UNIT}px＝水平到達 ${reach} x ${SPIKE_MAX_WIDTH_RATIO}）を超えます (x=${o.x})`,
+      })
+    }
+  }
+
+  // 着地可能面の重なり
+  type Seg = { x0: number; x1: number; label: string }
+  const segs: Seg[] = []
+  for (const o of stage.objects) {
+    if (o.t === 'block') segs.push({ x0: o.x, x1: o.x + o.w, label: `block@${o.x}` })
+    else if (o.t === 'plat') segs.push({ x0: o.x, x1: o.x + PLAT_W, label: `plat@${o.x}` })
+    else if (o.t === 'crumble') segs.push({ x0: o.x, x1: o.x + CRUMBLE_W, label: `crumble@${o.x}` })
+    else if (o.t === 'lift') segs.push({ x0: o.x, x1: o.x + LIFT_W, label: `lift@${o.x}` })
+    else if (o.t === 'swing') {
+      // 横に振れるので可動域の全幅を占有するものとして数える
+      segs.push({ x0: o.x, x1: o.x + o.amp + SWING_W, label: `swing@${o.x}` })
+    }
+  }
+  const pits = stage.objects
+    .filter((o): o is Extract<typeof o, { t: 'pit' }> => o.t === 'pit')
+    .map((o) => ({ x0: o.x, x1: o.x + o.w }))
+  const groundSolid = (x: number) => !pits.some((p) => x >= p.x0 && x < p.x1)
+  const edges = new Set<number>()
+  for (const g2 of segs) { edges.add(g2.x0); edges.add(g2.x1) }
+  for (const x of [...edges].sort((a, b) => a - b)) {
+    const over = segs.filter((g2) => x >= g2.x0 && x < g2.x1)
+    const count = over.length + (groundSolid(x) ? 1 : 0)
+    if (count > MAX_OVERLAPPING_SURFACES) {
+      issues.push({
+        level: 'FAIL',
+        code: 'SURFACES',
+        message: `worldX=${x} に着地可能面が ${count} 枚重なっています（上限 ${MAX_OVERLAPPING_SURFACES}＝本線＋迂回）: ${over.map((g2) => g2.label).join(', ')}${groundSolid(x) ? ', 地面' : ''}`,
+      })
+      break
+    }
+  }
+
+  // 同時に起動中になりうる崩落床
+  const crumbles = stage.objects.filter((o): o is Extract<typeof o, { t: 'crumble' }> => o.t === 'crumble')
+  if (crumbles.length > 0) {
+    const liveSpan = (CRUMBLE_DELAY + CRUMBLE_FALL_FRAMES) * stage.speedPxPerFrame
+    for (let i = 0; i < crumbles.length; i++) {
+      let n = 1
+      for (let j = i + 1; j < crumbles.length; j++) {
+        if (crumbles[j].x - crumbles[i].x <= liveSpan) n++
+      }
+      if (n > MAX_CONCURRENT_CRUMBLE) {
+        issues.push({
+          level: 'FAIL',
+          code: 'CRUMBLE_N',
+          message: `x=${crumbles[i].x} から ${Math.round(liveSpan)}px（起動中の ${CRUMBLE_DELAY + CRUMBLE_FALL_FRAMES}f）の範囲に崩落床が ${n} 個あります（上限 ${MAX_CONCURRENT_CRUMBLE}）`,
+        })
+        break
+      }
+    }
+  }
+
+  // 【P2】クライマックス帯に谷を置かない。谷は後続を 1.9R 押し広げ、そこが最も疎になる
+  for (const o of stage.objects) {
+    if (o.t !== 'pit') continue
+    const at = o.x / stage.lengthPx
+    if (at >= CLIMAX_MIN_RATIO && at <= CLIMAX_MAX_RATIO) {
+      issues.push({
+        level: 'WARN',
+        code: 'PIT_IN_CLIMAX',
+        message: `クライマックス帯（到達率 ${(at * 100).toFixed(1)}%）に谷があります (x=${o.x})。谷は後続の安全間隔を広げるため D(t) のピークが前へずれやすい`,
+      })
+      break
+    }
+  }
+
+  return issues
 }
 
 /**
@@ -1407,6 +1514,8 @@ export function staticChecks(stage: StageDef, budget: StageBudget): CheckIssue[]
           message: `槍の伸長 ${o.rise}f が範囲 ${SPEAR_RISE_MIN}〜${SPEAR_RISE_MAX} の外です (x=${o.x})`,
         })
       }
+      // 静止モード（triggerX < 0）はトラップではないのでトリガー規定の対象外（§15-14 #5）
+      if (o.triggerX < 0) continue
       // S1: 通過開始までに伸びきっていること / S2: 跳ぶ判断を終えた後に生え始めること
       const v = stage.speedPxPerFrame
       const sx = o.x + 1 // 判定左端（視覚6px の中央に判定4px）
@@ -1468,6 +1577,7 @@ export function staticChecks(stage: StageDef, budget: StageBudget): CheckIssue[]
   }
 
   issues.push(...wallChecks(stage))
+  issues.push(...catalogLimits(stage))
 
   const counted = stage.objects.filter((o) => o.t !== 'warn').length
   if (counted !== budget.objectCount) {
@@ -1487,7 +1597,7 @@ export function staticChecks(stage: StageDef, budget: StageBudget): CheckIssue[]
 
 export function verifyStage(stage: StageDef, budget: StageBudget): VerifyResult {
   const issues = staticChecks(stage, budget)
-  const solve = solveStage(stage)
+  const solve = solveStage(stage, budget.windowMinFrames)
 
   // 検査1: 突破可能性
   if (!solve.feasible) {

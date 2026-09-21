@@ -156,6 +156,8 @@ export function goalFrame(stage: StageDef): number {
  * プレイヤーの位置・速度・入力・状態を一切参照しない（§15-5-4【P0】）。
  */
 export function spearRiseStart(stage: StageDef, def: { triggerX: number }): number {
+  // triggerX < 0 は**静止モード**（常時展開の静止トゲ柱）。GDD §15-14 #5
+  if (def.triggerX < 0) return Number.NEGATIVE_INFINITY
   return def.triggerX / stage.speedPxPerFrame
 }
 
@@ -169,6 +171,8 @@ export function spearHeightAt(
   riseStart: number,
   stageFrame: number,
 ): number {
+  // 静止モードは最初から伸びきっている
+  if (riseStart === Number.NEGATIVE_INFINITY) return def.h
   if (stageFrame < riseStart) return SPEAR_IDLE_H
   const t = def.rise <= 0 ? 1 : Math.max(0, Math.min(1, (stageFrame - riseStart) / def.rise))
   return Math.max(SPEAR_IDLE_H, Math.round(def.h * t))
