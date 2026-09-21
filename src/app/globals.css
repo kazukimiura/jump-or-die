@@ -1,26 +1,57 @@
 @import "tailwindcss";
 
+/*
+ * ゲーム用のスタイル。
+ *
+ * 出典: GDD §11-1（レターボックス）/ §12-3（ピクセルパーフェクト）
+ *       / §12-4（touch-action 等）/ §12-5（AdSense との共存）
+ *       スタイルガイド §8-3（レターボックス色 GB1・枠飾りは付けない）
+ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* GB1 墨。canvas 外の余白（レターボックス）の色 */
+  --gb1: #081820;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+html,
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: var(--gb1);
+  /* プレイ中に広告挿入でレイアウトがずれないよう、文書自体をスクロールさせない
+     （GDD §12-5 / 第4幕の不合格条件「プレイ中の CLS」対策） */
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/*
+ * ゲームの全画面レイヤー。
+ * Auto ads が DOM に要素を挿入しても**プレイ領域のレイアウトに影響しない**よう、
+ * `position: fixed; inset: 0` の独立レイヤーに固定し、z-index で最前面に置く。
+ * 画面下部固定のアンカー広告がタップ判定と重なる事故を物理的に潰す（GDD §12-5）。
+ */
+.jd-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--gb1);
+  /* 入力は 1 種類だけ。スクロール・長押しメニュー・ハイライトをすべて殺す */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  overscroll-behavior: none;
+}
+
+/* 整数倍スケール。補間は禁止（GDD §12-3） */
+.jd-canvas {
+  display: block;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: pixelated;
+  touch-action: none;
 }
