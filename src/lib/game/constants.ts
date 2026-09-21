@@ -140,12 +140,44 @@ export const PIT_MAX_RATIO = 0.9
 export const GAP_MAX_RATIO = 0.92
 /** 障害物の最大高さ 40 px */
 export const OBSTACLE_MAX_H = 40
-/** 連続チェインの上限 5 回（GDD §7-3 ルールD） */
-export const CHAIN_MAX = 5
-/** チェイン判定の閾値。着地からこのフレーム数以内の再ジャンプを連鎖とみなす */
-export const CHAIN_GROUNDED_FRAMES = INPUT_BUFFER
+// == 検査（ステージソルバ・GDD 付録A 2026-09-21 追加 / §14） ==============
 
-// == クライマックス位置（GDD §7-3 ルールE） ================================
+/**
+ * 生存窓の計測方法。連続フレーム列の最大長で測り、非連続の和を取らない
+ * （GDD §14-① 縛り a）。到達状態ごとに分けて測る（縛り b）。
+ */
+export const WINDOW_METRIC = 'contiguous-max-run' as const
+
+/** 最悪生存窓の警告しきい値 3 f (50 ms)（GDD §14-① 副1） */
+export const WORST_WINDOW_WARN = 3
+
+/**
+ * 詰み潜伏時間の上限 42 f (700 ms) = JUMP_AIRTIME（GDD §14-① 副2）。
+ * 「見た目には越えたのに、既に詰んでいて 1.5 秒後に死ぬ」遅延死を潰すための上限。
+ * ミスと死が1ジャンプ弧の内側に収まっていれば、人はそれを1つの出来事として知覚する。
+ */
+export const DEADEND_LATENCY = 42
+
+/**
+ * これ以下の接地時間でつながるジャンプを「連鎖」とみなす 12 f (200 ms)。
+ * 単純反応時間の下限が約 200ms であり、それ以下の再ジャンプは
+ * 「着地してから状況を見て決める」ことが生理的に不可能＝事前決め打ちの連続入力である
+ * （GDD §14-③）。
+ */
+export const CHAIN_GROUND_MAX = 12
+/** 連鎖長の絶対上限 5（GDD §7-3 ルールD） */
+export const CHAIN_MAX_GLOBAL = 5
+/** 連鎖長4以上の直後に必要な接地区間 30 f (500 ms)（息継ぎ規定・GDD §14-③） */
+export const BREATH_MIN = 30
+/** 息継ぎ規定が発動する連鎖長 */
+export const BREATH_TRIGGER_CHAIN = 4
+
+/** 区間難度 D(t) のスライディング窓幅 2.0 s = 120 f（GDD §14-④） */
+export const CLIMAX_WINDOW_FRAMES = 120
+/** D(t) の正規化基準。JUMP_AIRTIME[frames]（GDD §14-④ の指定どおり 42 を使う） */
+export const CLIMAX_NORM_FRAMES = 42
+
+// == クライマックス位置（GDD §7-3 ルールE / §14-④） =======================
 
 export const CLIMAX_MIN_RATIO = 0.85
 export const CLIMAX_MAX_RATIO = 0.95

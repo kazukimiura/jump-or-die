@@ -17,20 +17,21 @@
 import type { StageBudget, StageDef } from '@/lib/game/types'
 
 /**
- * GDD §6-3 の表。全10ステージぶん定義しておく（ソルバの合否基準）。
+ * GDD §6-3 の表（2026-09-21 §14-② 改訂版）。全10ステージぶん定義しておく。
+ * 生存窓は「下限のみ」から **下限と上限を持つ帯** に変わっている。
  * S4〜S10 のステージ実体は本幕のスコープ外。
  */
 export const STAGE_BUDGETS: Record<number, StageBudget> = {
-  1: { objectCount: 11, maxChain: 1, minTapWindowFrames: 20, climaxAt: 0.88 },
-  2: { objectCount: 17, maxChain: 2, minTapWindowFrames: 18, climaxAt: 0.9 },
-  3: { objectCount: 23, maxChain: 2, minTapWindowFrames: 16, climaxAt: 0.86 },
-  4: { objectCount: 30, maxChain: 3, minTapWindowFrames: 14, climaxAt: 0.91 },
-  5: { objectCount: 34, maxChain: 3, minTapWindowFrames: 12, climaxAt: 0.88 },
-  6: { objectCount: 43, maxChain: 4, minTapWindowFrames: 10, climaxAt: 0.92 },
-  7: { objectCount: 47, maxChain: 4, minTapWindowFrames: 9, climaxAt: 0.89 },
-  8: { objectCount: 58, maxChain: 5, minTapWindowFrames: 7, climaxAt: 0.93 },
-  9: { objectCount: 72, maxChain: 5, minTapWindowFrames: 6, climaxAt: 0.9 },
-  10: { objectCount: 90, maxChain: 5, minTapWindowFrames: 4, climaxAt: 0.95 },
+  1: { objectCount: 11, maxChain: 1, windowMinFrames: 20, windowMaxFrames: 40, climaxAt: 0.88, climaxWarnOnly: true },
+  2: { objectCount: 17, maxChain: 2, windowMinFrames: 18, windowMaxFrames: 32, climaxAt: 0.9, climaxWarnOnly: false },
+  3: { objectCount: 23, maxChain: 2, windowMinFrames: 16, windowMaxFrames: 26, climaxAt: 0.86, climaxWarnOnly: false },
+  4: { objectCount: 30, maxChain: 3, windowMinFrames: 14, windowMaxFrames: 22, climaxAt: 0.91, climaxWarnOnly: false },
+  5: { objectCount: 34, maxChain: 3, windowMinFrames: 12, windowMaxFrames: 19, climaxAt: 0.88, climaxWarnOnly: false },
+  6: { objectCount: 43, maxChain: 4, windowMinFrames: 10, windowMaxFrames: 16, climaxAt: 0.92, climaxWarnOnly: false },
+  7: { objectCount: 47, maxChain: 4, windowMinFrames: 9, windowMaxFrames: 14, climaxAt: 0.89, climaxWarnOnly: false },
+  8: { objectCount: 58, maxChain: 5, windowMinFrames: 7, windowMaxFrames: 11, climaxAt: 0.93, climaxWarnOnly: false },
+  9: { objectCount: 72, maxChain: 5, windowMinFrames: 6, windowMaxFrames: 9, climaxAt: 0.9, climaxWarnOnly: false },
+  10: { objectCount: 90, maxChain: 5, windowMinFrames: 4, windowMaxFrames: 7, climaxAt: 0.95, climaxWarnOnly: false },
 }
 
 // ---------------------------------------------------------------------------
@@ -88,19 +89,23 @@ const STAGE_2: StageDef = {
     { t: 'block', x: 1970, w: 24, h: 32 },
     // ③ 応用 — 既習の小ブロックと組み合わせる
     { t: 'block', x: 2350, w: 12, h: 16 },
-    { t: 'block', x: 2600, w: 24, h: 32 },
-    { t: 'block', x: 2780, w: 12, h: 16 },
-    { t: 'block', x: 2980, w: 12, h: 16 },
-    // ④ 試験 — TWIN。着地から間を置かずに次を跳ぶ（チェイン2）
-    { t: 'block', x: 3350, w: 12, h: 16 },
+    { t: 'block', x: 2620, w: 24, h: 32 },
+    { t: 'block', x: 2900, w: 12, h: 16 },
+    // ④ 試験 — TWIN。140px 間隔の対が「着地即跳び」＝連鎖2 を作る
+    { t: 'block', x: 3200, w: 12, h: 16 },
     { t: 'block', x: 3480, w: 12, h: 16 },
-    { t: 'block', x: 3820, w: 24, h: 32 },
-    { t: 'block', x: 3960, w: 12, h: 16 },
-    { t: 'block', x: 4300, w: 12, h: 16 },
-    { t: 'block', x: 4430, w: 12, h: 16 },
-    // クライマックス 到達率 90%台 — ブロック大の直後に締めの一本
-    { t: 'block', x: 4700, w: 24, h: 32 },
-    { t: 'block', x: 4870, w: 12, h: 16 },
+    { t: 'block', x: 3620, w: 12, h: 16 },
+    { t: 'block', x: 3900, w: 24, h: 32 },
+    { t: 'block', x: 4080, w: 12, h: 16 },
+    // 予告マーカー（§7-3 ルールB）— クライマックスの 0.5秒（165px）手前
+    { t: 'warn', x: 4160 },
+    // クライマックス（到達率 89% 付近）— 2.0秒窓に3本のジャンプを収めて D(t) のピークを作る
+    // 140px の対で連鎖2、その 180px 先で連鎖を切る（§14-③ 上限2を守る）
+    { t: 'block', x: 4300, w: 24, h: 32 },
+    { t: 'block', x: 4440, w: 12, h: 16 },
+    { t: 'block', x: 4620, w: 24, h: 32 },
+    // 締め
+    { t: 'block', x: 4850, w: 12, h: 16 },
   ],
 }
 
@@ -122,39 +127,39 @@ const STAGE_3: StageDef = {
   objects: [
     // 既習（OB-01 / OB-02）の確認
     { t: 'block', x: 460, w: 12, h: 16 },
-    { t: 'block', x: 800, w: 24, h: 32 },
-    // ① 紹介 — OB-03 谷。最小幅からはじめる
-    { t: 'pit', x: 1200, w: 32 },
+    { t: 'block', x: 610, w: 24, h: 32 },
+    { t: 'block', x: 900, w: 12, h: 16 },
+    // ① 紹介 — OB-03 谷。最小幅からはじめる（前後に 1.5s = 270px 以上の余白）
+    { t: 'pit', x: 1250, w: 32 },
     // ② 反復 — 同じ形を2回、少しずつ広げる
-    { t: 'pit', x: 1560, w: 40 },
-    { t: 'pit', x: 1900, w: 48 },
-    // ③ 応用 — 谷 + 既習ブロック
-    { t: 'pit', x: 2250, w: 56 },
-    { t: 'block', x: 2480, w: 12, h: 16 },
+    { t: 'pit', x: 1580, w: 40 },
+    { t: 'pit', x: 1910, w: 48 },
+    // ③ 応用 — 広い谷 + 既習ブロック
+    { t: 'pit', x: 2240, w: 56 },
+    { t: 'block', x: 2550, w: 12, h: 16 },
+    { t: 'block', x: 2700, w: 12, h: 16 },
     // ① 紹介 — OB-06 トゲ床。単独で置く（ルールC: 未知を2つ同時に出さない）
-    { t: 'spike', x: 2850, n: 2 },
+    { t: 'spike', x: 3070, n: 2 },
     // ② 反復
-    { t: 'spike', x: 3150, n: 2 },
-    { t: 'spike', x: 3450, n: 3 },
-    // ③ 応用 — 谷 + トゲ / トゲ + ブロック
-    { t: 'pit', x: 3800, w: 64 },
-    { t: 'spike', x: 3990, n: 3 },
-    { t: 'block', x: 4300, w: 24, h: 32 },
-    { t: 'spike', x: 4520, n: 2 },
-    // ④ 試験 — 高密度。着地即跳び（チェイン2）を混ぜる
-    { t: 'pit', x: 4800, w: 72 },
-    { t: 'block', x: 5000, w: 12, h: 16 },
-    { t: 'spike', x: 5150, n: 3 },
-    { t: 'block', x: 5290, w: 12, h: 16 },
-    // 予告マーカー（ルールB）— クライマックスの 0.5秒（90px）手前
-    { t: 'warn', x: 5330 },
-    // クライマックス 到達率 86% — 長跳び P-E
-    { t: 'pit', x: 5420, w: 80 },
-    { t: 'spike', x: 5620, n: 3 },
-    // 締め — 既習のブロックだけで終わらせる
-    { t: 'block', x: 5860, w: 12, h: 16 },
-    { t: 'block', x: 6040, w: 12, h: 16 },
-    { t: 'block', x: 6200, w: 12, h: 16 },
+    { t: 'spike', x: 3350, n: 2 },
+    { t: 'spike', x: 3630, n: 3 },
+    // ③ 応用 — 谷 + トゲ + ブロック
+    { t: 'pit', x: 3930, w: 64 },
+    { t: 'spike', x: 4240, n: 3 },
+    { t: 'block', x: 4390, w: 12, h: 16 },
+    // ④ 試験 — 高密度
+    { t: 'block', x: 4670, w: 24, h: 32 },
+    { t: 'block', x: 4950, w: 12, h: 16 },
+    { t: 'spike', x: 5100, n: 2 },
+    // 予告マーカー（ルールB）— クライマックスの 0.5秒（180px）手前
+    { t: 'warn', x: 5220 },
+    // クライマックス（到達率 88% 付近）— 長跳び P-E から 2.0秒窓に3本を収める
+    { t: 'pit', x: 5400, w: 80 },
+    { t: 'block', x: 5600, w: 12, h: 16 },
+    { t: 'spike', x: 5790, n: 3 },
+    // 締め
+    { t: 'block', x: 6060, w: 12, h: 16 },
+    { t: 'block', x: 6220, w: 12, h: 16 },
   ],
 }
 

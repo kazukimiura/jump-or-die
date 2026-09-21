@@ -79,16 +79,24 @@ export type StageDef = {
   objects: ObjDef[]
 }
 
-/** ソルバの検査基準（GDD §6-3 の表から引く） */
+/**
+ * ソルバの検査基準（GDD §6-3 の表から引く）。
+ * 2026-09-21 改訂（§14-②）: 「最小タップ窓」は下限のみの規定から
+ * **下限と上限を持つ帯**に変わった。窓は §14-① の「生存窓」で測る。
+ */
 export type StageBudget = {
   /** 障害物 総数（GDD §6-3） */
   objectCount: number
-  /** 最大チェイン長（GDD §6-3） */
+  /** 最大チェイン長。不合格条件（GDD §6-3 / §14-③） */
   maxChain: number
-  /** 最小タップ窓（フレーム）。これを下回る配置は禁止（GDD §6-3） */
-  minTapWindowFrames: number
+  /** 生存窓 下限（フレーム）。下回ると不合格（GDD §6-3） */
+  windowMinFrames: number
+  /** 生存窓 上限（フレーム）。超えると緩すぎで不合格。S1 は除外（GDD §6-3） */
+  windowMaxFrames: number
   /** クライマックス位置（到達率 0..1）。§7-3 ルールE */
   climaxAt: number
+  /** クライマックス検査を警告扱いにするか（S1 のみ true。GDD §14-④） */
+  climaxWarnOnly: boolean
 }
 
 // ---------------------------------------------------------------------------
