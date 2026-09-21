@@ -2,6 +2,7 @@
  * sprites.ts — ドット図の文字列配列 → オフスクリーン canvas への bake（焼き込み）
  *
  * 出典: shared/design/JumpOrDie_ドット素材指示書.md §2 / §3 / §4-2 / §5 / §6-4 / §7
+ *       （SP-15 未クリア星 / SP-17 戻る矢印 は R11–R13 で廃止。定義ごと削除済み）
  *
  * 絶対制約:
  *   - **外部画像ファイル（PNG 等）を使わない。** 起動時に 1 度だけ canvas へ bake する
@@ -270,7 +271,16 @@ export const SPR_GROUND_C: DotRows = groundTile(2)
  * SP-15 〜 SP-17  アイコン
  * ========================================================================== */
 
-/** SP-15 クリア星（塗り・GB1） */
+/**
+ * SP-15 クリア星（塗り・GB1）。
+ *
+ * 【廃止 / 2026-09-21】対になっていた「未クリア星（輪郭のみ・GB2）」は**素材ごと削除した**。
+ * 未クリア枠は**完全な空欄**が確定仕様であり（UIテキスト 11-2）、輪郭星は「器」として働く。
+ * 器が置かれていると、その枠は「穴が開いたまま残っている」ではなく
+ * 「星がまだ入っていない、用意された枠」に見え、**憐れみの表情が出る**。
+ * アトラスに焼かれて残る限り次の実装者が必ず使うため、定義ごと消してある。
+ * 同じ理由で SP-17（戻る `←`）も削除した（戻り導線は `TITLE` の文字列・采配裁定 M-2）。
+ */
 export const SPR_STAR_FULL: DotRows = [
   '...11...',
   '...11...',
@@ -280,18 +290,6 @@ export const SPR_STAR_FULL: DotRows = [
   '.111111.',
   '.11..11.',
   '1.....1.',
-]
-
-/** SP-15 未クリア星（輪郭のみ・GB2）。※ ステージセレクトでは使わない（UIテキスト 11-2） */
-export const SPR_STAR_EMPTY: DotRows = [
-  '...22...',
-  '...22...',
-  '22222222',
-  '.22..22.',
-  '..2..2..',
-  '.22..22.',
-  '.22..22.',
-  '2.....2.',
 ]
 
 /** SP-16 未解放の錠 8×10（GB3） */
@@ -306,25 +304,6 @@ export const SPR_LOCK: DotRows = [
   '333..333',
   '33333333',
   '33333333',
-]
-
-/**
- * SP-17 戻る `←` 8×8（GB1）。
- *
- * 【采配裁定 M-2 / 2026-09-21】ステージセレクトの戻り導線は `TITLE` の文字列に差し替わったため、
- * **本スプライトは現在どこからも描画されていない**（アトラスには焼かれている）。
- * 素材としては残してあるが、削除の可否は采配の判断を待つこと。
- * 離脱導線 `← STAGES` の矢印は FONT_3x5 のグリフであり、本スプライトとは別物。
- */
-export const SPR_ARROW: DotRows = [
-  '...1....',
-  '..11....',
-  '.111111.',
-  '11111111',
-  '11111111',
-  '.111111.',
-  '..11....',
-  '...1....',
 ]
 
 /* ============================================================================
@@ -466,9 +445,7 @@ export type SpriteName =
   | 'GROUND_B'
   | 'GROUND_C'
   | 'STAR_FULL'
-  | 'STAR_EMPTY'
   | 'LOCK'
-  | 'ARROW'
   | 'LOGO_JUMP'
   | 'LOGO_OR'
   | 'LOGO_DIE'
@@ -497,9 +474,7 @@ export const SPRITE_DIMS: Record<SpriteName, readonly [number, number]> = {
   GROUND_B: [16, 32],
   GROUND_C: [16, 32],
   STAR_FULL: [8, 8],
-  STAR_EMPTY: [8, 8],
   LOCK: [8, 10],
-  ARROW: [8, 8],
   LOGO_JUMP: [92, 24],
   LOGO_OR: [22, 12],
   LOGO_DIE: [68, 24],
@@ -528,9 +503,7 @@ export const SPRITES: Record<SpriteName, DotRows> = {
   GROUND_B: SPR_GROUND_B,
   GROUND_C: SPR_GROUND_C,
   STAR_FULL: SPR_STAR_FULL,
-  STAR_EMPTY: SPR_STAR_EMPTY,
   LOCK: SPR_LOCK,
-  ARROW: SPR_ARROW,
   LOGO_JUMP: SPR_LOGO_JUMP,
   LOGO_OR: SPR_LOGO_OR,
   LOGO_DIE: SPR_LOGO_DIE,
