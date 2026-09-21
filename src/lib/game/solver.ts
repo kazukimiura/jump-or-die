@@ -94,6 +94,17 @@ const MAX_STATES = 4_000_000
 
 const ZERO_PROFILE = { frames: 0, ctrl: 0 }
 
+/**
+ * 2 つの状態が「同じ場所に居る」か。
+ * ワールドX は stageFrame の純関数なので、同一フレームなら足場と高さだけで決まる。
+ */
+function sameFooting(a: SimState, b: SimState): boolean {
+  return (
+    a.player.supportIndex === b.player.supportIndex &&
+    Math.round(a.player.y * 64) === Math.round(b.player.y * 64)
+  )
+}
+
 // ---------------------------------------------------------------------------
 // 結果の型
 // ---------------------------------------------------------------------------
@@ -240,6 +251,7 @@ class Search {
   private memoTaps = new Map<string, number>()
   private memoSurvive = new Map<string, { frames: number; ctrl: number }>()
   private memoArrival = new Map<string, ArrivalWindows>()
+  private memoCoast = new Map<string, SimState[]>()
 
   constructor(stage: StageDef) {
     this.stage = stage
@@ -324,11 +336,74 @@ class Search {
   }
 
   /**
+   * 「一度も跳ばずに走り続けた」軌跡を frame 昇順で返す（先頭が `from` のフレーム）。
+   * 死亡・ゴール・フレーム上限で打ち切る。拡張条項（§14-9）の比較対象。
+   */
+  private coastPath(from: SimState): SimState[] {
+    const key = stateKey(from)
+    const hit = this.memoCoast.get(key)
+    if (hit) return hit
+    const out: SimState[] = [from]
+    let s = from
+    while (!s.dead && !s.cleared && s.stageFrame <= this.maxFrame) {
+      s = this.advance(s, false)
+      out.push(s)
+    }
+    this.memoCoast.set(key, out)
+    return out
+  }
+
+  /**
+   * 有効タップの判定（GDD §14-9 拡張条項。第3次裁定 §14-15 #9 で実施期限が到来）。
+   *
+   *   タップ f が有効 ⟺ 結果状態 s' ∈ W
+   *                   かつ (  T(s') <= T(s) - 1
+   *                        または s' が「このフレームで跳ばずに走り続ける」ことでは
+   *                           到達できない状態である )
+   *
+   * 【なぜ下段が要るのか】
+   * 上段の厳格な等式だけだと、**追加タップを払う迂回ルートを窓計算から丸ごと除外する**。
+   * 典型は §4-4 のブロック上面経由で、
+   *   ルートA 跳び越える          … 1タップ。T が 1 減る → 有効
+   *   ルートB 上面に乗って跳び降りる … 2タップ。乗った時点では T が減らない → 除外されていた
+   * §4-4 でブロックを着地可能にしたのはまさにルートBを作るためなので、
+   * 計測がそれを見ていないのは設計上の選択肢を無いものとして扱うことになる。
+   * 「踏み台にしないと越えられない」配置では、正解ルートそのものが消える。
+   *
+   * 【なぜ無駄ホップが混入しないのか】
+   * 下段は「**跳ばなければ行けない場所へ行く**」タップだけを認める。
+   * 平地での無駄ホップは、跳んでも跳ばなくても同じ足場・同じ高さに着くので
+   * 「走り続けでは到達できない状態」に当たらず、引き続き除外される。
+   * これがフィルタの目的（§14-9 理由3: 窓を意味のある値に保つ）を守る。
+   */
+  private isUsefulTap(s: SimState, target: number, coast: SimState[]): boolean {
+    const jumped = this.advance(s, true)
+    const t = this.minTaps(jumped)
+    // s' ∈ W（両条項の共通前提）
+    if (t === INF) return false
+    // 上段: 最小タップ数がちょうど 1 減る
+    if (t + 1 === target) return true
+
+    // 下段: 跳ばずに走り続けては到達できない状態か
+    const arrival = this.nextArrival(jumped)
+    if (arrival === 'DEAD') return false
+    // 跳んだ先でそのままゴールできるなら、走り続けでは明らかに到達できない
+    if (arrival === 'CLEARED') return true
+
+    const base = coast[0].stageFrame
+    const idx = arrival.stageFrame - base
+    const same = idx >= 0 && idx < coast.length ? coast[idx] : null
+    // 走り続けではそのフレームまで生きていない（＝到達できない）
+    if (same === null || same.dead || same.cleared) return true
+    // 同じフレームに、同じ足場・同じ高さで居るなら「跳ばなくても同じ場所」＝無駄ホップ
+    return !sameFooting(same, arrival)
+  }
+
+  /**
    * 到達状態 s の生存窓を測る（GDD §14-①）。
    *
-   * s から跳ばずに進め、ジャンプ可能なフレームを列挙し、
-   * 「タップすると最小タップ数がちょうど1減る」フレームを **有効タップ** として
-   * 抽出したうえで、その **連続フレーム列** を切り出す。
+   * s から跳ばずに進め、ジャンプ可能なフレームを列挙し、**有効タップ**（下記）の
+   * フレームを抽出したうえで、その **連続フレーム列** を切り出す。
    *
    * 【§14-9 の確認事項に対する実装の明言】
    * - フィルタ（有効タップ判定）→ 連続列の切り出し、の順で適用している
@@ -354,21 +429,14 @@ class Search {
       s = this.advance(s, false)
     }
 
+    // この接地区間から「一度も跳ばずに走り続けた」ときの軌跡。
+    // 拡張条項の判定に使う。区間内のどのフレームから見ても同一の経路なので1本で足りる
+    const coast = this.coastPath(arrival)
+
     const runs: { from: number; to: number }[] = []
     let start = -1
     for (let i = 0; i < run.length; i++) {
-      // 有効タップのフィルタ（§14-9 で承認済み。合算ではなく絞り込み）
-      //
-      // TODO【P1 / GDD §14-12 #5・S5 のステージ作成に着手する前に実施】
-      //   この厳格な等式は「追加タップを払って上面に乗る迂回ルート」を窓計算から
-      //   除外してしまう。影響は保守側（窓が狭く出る）なので S1〜S3 の結果は有効だが、
-      //   S5（OB-05 浮遊足場）以降「上に乗るのが正解」の配置では偽陽性が出る。
-      //   拡張案: ok = s' in W かつ ( T(s') <= T(s)-1
-      //                             または s' が「跳ばずに走り続ける」では到達できない状態 )
-      const ok =
-        target !== INF &&
-        target > 0 &&
-        this.minTaps(this.advance(run[i], true)) + 1 === target
+      const ok = target !== INF && target > 0 && this.isUsefulTap(run[i], target, coast)
       if (ok) {
         if (start < 0) start = i
       } else if (start >= 0) {
