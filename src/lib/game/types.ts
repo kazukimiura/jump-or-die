@@ -250,6 +250,12 @@ export type StageBudget = {
   /** `D_actual` 目標の許容帯（記録用。ソルバでは `D_actual` を算出できないので検査しない） */
   deathBand: readonly [number, number]
   /**
+   * `deathTarget` が**暫定値**か。true のとき上限側の判定を警告に落とす。
+   * **仮置きの数字で不合格を出さない**（GDD §16-12）。
+   * S1〜S4 は社長の実測で確定、S5〜S10 は暫定（上端がまだ見えていない）。
+   */
+  deathTargetProvisional?: boolean
+  /**
    * 社長のプレイ実測 `D_actual`。得られているステージのみ。
    * `D_learn = D_actual - E[D_skill]` を**記録する**ために持つ。
    */

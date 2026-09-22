@@ -92,8 +92,8 @@ import {
   PLAYER_HITBOX_H,
   SPEAR_TIP_INSET,
   SPEAR_VIS_W,
+  SKILL_MIN_ABS,
   SKILL_SHARE_HI,
-  SKILL_SHARE_LO,
   DROP_CRUMBLE_MIN_SEPARATION,
   DROP_H,
   KNOWLEDGE_DEATH_RATIO,
@@ -2236,23 +2236,27 @@ export function verifyStage(stage: StageDef, budget: StageBudget): VerifyResult 
   // これだけが σ という**人間側の実測量**に接続されている。生存窓・誤帰属距離・D(t)・
   // 狭窓密度は全て企画の想定から導かれていて、指標体系が自己参照になっていた。
   // 旧10本は全ての検査に合格していながら E[D] 合計が約 0.5 回で、社長は無死亡で通した。
-  const edLo = budget.deathTarget * SKILL_SHARE_LO
   const edHi = budget.deathTarget * SKILL_SHARE_HI
   const share = budget.deathTarget > 0 ? solve.expectedDeaths / budget.deathTarget : 0
   const sens = solve.expectedDeathsBySigma
     .map((e) => `σ=${e.sigma}: ${e.value.toFixed(1)}`)
     .join(' / ')
-  if (solve.expectedDeaths < edLo) {
+  // 下限は**絶対値**。E[D_skill]=0.5 ⇔ 習熟後の通しクリア確率 2/3。
+  // 完全に覚えた人が毎回クリアできるなら、そのクリアは「実行できた」ではなく
+  // 「思い出せた」でしかない。1タップの精度を売りにした本作では看板が下りる
+  if (solve.expectedDeaths < SKILL_MIN_ABS) {
     issues.push({
       level: 'FAIL',
-      code: 'SKILL_SHARE',
-      message: `E[D_skill]=${solve.expectedDeaths.toFixed(1)} が D_actual 目標 ${budget.deathTarget} の ${(share * 100).toFixed(1)}% で、下限 ${SKILL_SHARE_LO * 100}%（${edLo.toFixed(1)}）を下回ります。**覚えたら二度と死なない＝リプレイ価値が無い**。[${sens}]`,
+      code: 'SKILL_MIN',
+      message: `E[D_skill]=${solve.expectedDeaths.toFixed(2)} が下限 ${SKILL_MIN_ABS}（習熟後の通しクリア確率 ${((1 / (1 + SKILL_MIN_ABS)) * 100).toFixed(0)}%）を下回ります。**習熟後に毎回クリアできる＝最後の1回が実行の勝利になっていない**。[${sens}]`,
     })
-  } else if (solve.expectedDeaths > edHi) {
+  }
+  // 上限は割合。**暫定目標に対しては警告**（仮置きの数字で不合格を出さない）
+  if (solve.expectedDeaths > edHi) {
     issues.push({
-      level: 'FAIL',
+      level: budget.deathTargetProvisional ? 'WARN' : 'FAIL',
       code: 'SKILL_SHARE',
-      message: `E[D_skill]=${solve.expectedDeaths.toFixed(1)} が D_actual 目標 ${budget.deathTarget} の ${(share * 100).toFixed(1)}% で、上限 ${SKILL_SHARE_HI * 100}%（${edHi.toFixed(1)}）を超えます。**覚えたのに運で死ぬ＝憲法2 に反する**。[${sens}]`,
+      message: `E[D_skill]=${solve.expectedDeaths.toFixed(1)} が D_actual 目標 ${budget.deathTarget}${budget.deathTargetProvisional ? '（暫定）' : ''} の ${(share * 100).toFixed(1)}% で、上限 ${SKILL_SHARE_HI * 100}%（${edHi.toFixed(1)}）を超えます。**覚えたのに運で死ぬ＝憲法2 に反する**。[${sens}]`,
     })
   }
 

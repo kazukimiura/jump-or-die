@@ -15,9 +15,8 @@ import { STAGES, getBudget } from '../src/data/stages'
 import { checkDeterminism, knowledgeDeaths, verifyStage } from '../src/lib/game/solver'
 import {
   CHAPTER_DEATH_SUM_HI,
-  CHAPTER_DEATH_SUM_LO,
+  SKILL_MIN_ABS,
   SKILL_SHARE_HI,
-  SKILL_SHARE_LO,
 } from '../src/lib/game/constants'
 import { horizontalReach } from '../src/lib/game/physics'
 import { goalFrame } from '../src/lib/game/stageRuntime'
@@ -33,7 +32,7 @@ const ms = (f: number) => Math.round((f * 1000) / 60)
 const pc = (r: number) => `${(r * 100).toFixed(1)}%`
 
 let failed = 0
-const sums = Array.from({ length: 6 }, () => ({ got: 0, want: 0 }))
+const sums = Array.from({ length: 6 }, () => ({ got: 0, want: 0, provisional: false }))
 
 console.log('=== JumpOrDie ステージソルバ検査 (GDD §7-4 / §14) ===')
 console.log(
@@ -95,8 +94,9 @@ for (const stage of STAGES) {
     )
     const share = s.expectedDeaths / budget.deathTarget
     console.log(
-      `  [15] E[D_skill]    : ${s.expectedDeaths.toFixed(1)} = D_actual 目標 ${budget.deathTarget} の ${(share * 100).toFixed(1)}%  ` +
-        `[帯 ${SKILL_SHARE_LO * 100}〜${SKILL_SHARE_HI * 100}%]  σ感度 ${s.expectedDeathsBySigma.map((e) => `σ=${e.sigma}:${e.value.toFixed(1)}`).join(' / ')}`,
+      `  [15] E[D_skill]    : ${s.expectedDeaths.toFixed(2)}  [下限 ${SKILL_MIN_ABS}（絶対値）]  ` +
+        `= D_actual 目標 ${budget.deathTarget}${budget.deathTargetProvisional ? '(暫定)' : ''} の ${(share * 100).toFixed(1)}% [上限 ${SKILL_SHARE_HI * 100}%]  ` +
+        `σ感度 ${s.expectedDeathsBySigma.map((e) => `σ=${e.sigma}:${e.value.toFixed(1)}`).join(' / ')}`,
     )
     console.log(
       `       D_actual 目標  : ${budget.deathTarget}（帯 ${budget.deathBand[0]}〜${budget.deathBand[1]}）` +
@@ -160,6 +160,7 @@ for (const stage of STAGES) {
   if (!r.ok) failed++
   sums[Math.min(5, Math.floor((stage.id - 1) / 5))].got += s.expectedDeaths
   sums[Math.min(5, Math.floor((stage.id - 1) / 5))].want += budget.deathTarget
+  if (budget.deathTargetProvisional) sums[Math.min(5, Math.floor((stage.id - 1) / 5))].provisional = true
   console.log('')
 }
 
@@ -170,13 +171,14 @@ for (const stage of STAGES) {
 console.log('=== 章合計 E[D_skill] ===')
 sums.forEach((t, i) => {
   if (t.want === 0) return
+  // 下限は各本の SKILL_MIN_ABS（絶対値）が担うので、章合計は**上限のみ**を見る
   const ratio = t.got / t.want
-  const ok = ratio >= CHAPTER_DEATH_SUM_LO && ratio <= CHAPTER_DEATH_SUM_HI
+  const ok = ratio <= CHAPTER_DEATH_SUM_HI
   console.log(
     `  章${i + 1}: E[D_skill] 合計 ${t.got.toFixed(1)} / D_actual 目標合計 ${t.want}  = ${(ratio * 100).toFixed(1)}%  ` +
-      `[帯 ${CHAPTER_DEATH_SUM_LO * 100}〜${CHAPTER_DEATH_SUM_HI * 100}%] ${ok ? 'OK' : 'NG'}`,
+      `[上限 ${CHAPTER_DEATH_SUM_HI * 100}%${t.provisional ? ' / 暫定目標を含むため警告どまり' : ''}] ${ok ? 'OK' : t.provisional ? 'WARN' : 'NG'}`,
   )
-  if (!ok) failed++
+  if (!ok && !t.provisional) failed++
 })
 console.log('')
 

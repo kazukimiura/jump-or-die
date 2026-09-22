@@ -921,6 +921,9 @@ export function buildRenderState(app: App): RenderState {
     title: isTitle
       ? {
           totalDeaths: app.save.total.die,
+          // σ（GDD §16-11 P1）。**100タップ未満は null**（0 と区別できないと
+          // `TAP ±0MS` が出てしまう）。表示・文言は描画層の契約どおり
+          tapSigmaMs: titleSigma(app).sigmaMs,
           sfxOn: app.save.opt.sfx,
           flashOn: !app.save.opt.reducedFlash,
         }
