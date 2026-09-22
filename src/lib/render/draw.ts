@@ -957,6 +957,42 @@ export function drawPlayScreen(ctx: CanvasRenderingContext2D, s: RenderState): v
  * 画面: TITLE
  * ========================================================================== */
 
+/* ----------------------------------------------------------------------------
+ * タイトル最下部の 2 行（トグル / 記録）
+ * -------------------------------------------------------------------------- */
+
+/**
+ * トグル行のベースライン（`SFX` / `FLASH`）。**`STAGES` ボタン（x264–311 / y154–164）と同じ帯に、
+ * その左側へ並べる。**
+ *
+ * 記録行に `DEATHS n` と `TAP ±31MS` の対が入ったことで、最下部の 1 行に
+ * 3 項目（SFX / DEATHS / FLASH）を並べる旧レイアウトは成立しなくなった。
+ * ボタンの下へ 2 行を積むと行間が 2px しか取れず窮屈になるため、
+ * **トグルをボタンと同じ高さへ上げ、記録行を従来どおり y170 に残す。**
+ */
+export const TITLE_TOGGLE_Y = 157
+/** `FLASH` の右端。`STAGES` ボタン（x264 始まり）の左に 8px 空けて置く */
+const TITLE_FLASH_RIGHT = 256
+/** 記録行のベースライン（`DEATHS n` / `TAP ±31MS`）。y170–174（最下 2px は空ける） */
+export const TITLE_RECORD_Y = 170
+
+/**
+ * タップのばらつき σ の表記。
+ *
+ * - 測定済み: **`TAP ±31MS`**（3 桁なら `TAP ±100MS`）
+ * - 未測定  : **`TAP --`** —— **`MS` を付けない。** 値が無いのだから単位も付かない
+ *
+ * **`0` は未測定ではない。** `0` は測定値なので `TAP ±0MS` になる。
+ * 未測定はあくまで `null` / `undefined` で渡すこと。
+ *
+ * 単位は値の一部なので**数字に密着**（`±31MS`）、
+ * ラベルは見出しなので**半角スペース 1 つで分ける**（`TAP ±31MS`）。
+ */
+export function formatTapSigma(sigmaMs: number | null | undefined): string {
+  if (sigmaMs == null || !Number.isFinite(sigmaMs)) return 'TAP --'
+  return `TAP ±${Math.round(sigmaMs)}MS`
+}
+
 export function drawTitleScreen(ctx: CanvasRenderingContext2D, s: RenderState): void {
   const t = s.title
   drawSky(ctx, 0)
@@ -998,20 +1034,30 @@ export function drawTitleScreen(ctx: CanvasRenderingContext2D, s: RenderState): 
     align: 'center',
   })
 
-  drawText(ctx, `SFX ${t?.sfxOn ? 'ON' : 'OFF'}`, 8, 170, {
+  // --- 下段 2 行。いずれも左揃え / 右揃えの対で、中央並置はしない ---
+  // 1 行目 y157–161: トグル（GB4・5.67:1）。`STAGES` ボタンと同じ帯の左側
+  drawText(ctx, `SFX ${t?.sfxOn ? 'ON' : 'OFF'}`, 8, TITLE_TOGGLE_Y, {
     font: 'F3X5',
     tone: TONE.TEXT_ON_GROUND,
   })
-  drawText(ctx, `FLASH ${t?.flashOn ? 'ON' : 'OFF'}`, LOGICAL_W - 8, 170, {
+  drawText(ctx, `FLASH ${t?.flashOn ? 'ON' : 'OFF'}`, TITLE_FLASH_RIGHT, TITLE_TOGGLE_Y, {
     font: 'F3X5',
     tone: TONE.TEXT_ON_GROUND,
     align: 'right',
   })
+
+  // 2 行目 y170–174: 記録。**同一ベースライン・同一階調（最薄 GB3・3.01:1）**
   if (t && t.totalDeaths > 0) {
-    drawText(ctx, `DEATHS ${t.totalDeaths}`, LOGICAL_W / 2, 170, {
+    drawText(ctx, `DEATHS ${t.totalDeaths}`, 8, TITLE_RECORD_Y, {
       font: 'F3X5',
       tone: TONE.TEXT_ON_GROUND_SUB,
-      align: 'center',
+    })
+  }
+  if (t) {
+    drawText(ctx, formatTapSigma(t.tapSigmaMs), LOGICAL_W - 8, TITLE_RECORD_Y, {
+      font: 'F3X5',
+      tone: TONE.TEXT_ON_GROUND_SUB,
+      align: 'right',
     })
   }
 }
