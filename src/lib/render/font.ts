@@ -112,6 +112,9 @@ export const FONT_5X7: Record<string, readonly number[]> = {
   '=': [0, 0, 0b01110, 0, 0b01110, 0, 0],
   // 下端揃え。`.` は y6 の 1 行、`,` は下端に接した尾を y6 へ落とす
   ',': [0, 0, 0, 0, 0, 0b01100, 0b01000],
+  // --- R21 σ表示 `TAP ±31MS` 用。**全高**（中央揃えにはしない）---
+  // `+` と `−` の間に必ず 1 行の空きを置く。詰めると `≡` や `＝` に見える
+  '±': [0b00100, 0b00100, 0b11111, 0b00100, 0b00100, 0, 0b11111],
 }
 
 /* ============================================================================
@@ -174,6 +177,9 @@ export const FONT_3X5: Record<string, readonly number[]> = {
   // --- R9 離脱導線 `← STAGES` 用。全高・上下対称（指示書 §6-2 改訂 R9 の作図そのまま）---
   // `ST nn` と同一書体・同一ベースラインで並ぶ必要があるため、スプライトにせずグリフで持つ
   '←': [0b001, 0b010, 0b111, 0b010, 0b001],
+  // --- R21 σ表示用。**全高**。`±` は `+` と `−` の2段を要し、3x5 の中央3行では
+  // 両者が接触して描き分けられない。数値の直前に立つ記号なので数字と同じ全高が正しい ---
+  '±': [0b010, 0b111, 0b010, 0, 0b111],
 }
 
 /* ============================================================================
@@ -592,8 +598,8 @@ export function assertFonts(): string[] {
   const count5 = Object.keys(FONT_5X7).length - 1
   const countK = Object.keys(FONT_KANA).length
   // 宣言は 39 / 43 / 82。実装では 3x5 に 2 字、かなに 5 字を増補している（冒頭の申し送り参照）
-  if (count3 !== 46) errors.push(`FONT_3x5 の収録字数が ${count3}（39 ＋ 増補 7 ＝ 46）`)
-  if (count5 !== 46) errors.push(`FONT_5x7 の収録字数が ${count5}（43 ＋ 増補 3 ＝ 46）`)
+  if (count3 !== 47) errors.push(`FONT_3x5 の収録字数が ${count3}（39 ＋ 増補 8 ＝ 47）`)
+  if (count5 !== 47) errors.push(`FONT_5x7 の収録字数が ${count5}（43 ＋ 増補 4 ＝ 47）`)
   if (countK !== 87) errors.push(`FONT_KANA_8x8 の収録字数が ${countK}（82 ＋ 増補 5 ＝ 87）`)
   for (const [ch, mask] of Object.entries(FONT_3X5)) {
     if (mask.length !== 5) errors.push(`FONT_3x5 "${ch}": 行数 ${mask.length} ≠ 5`)
