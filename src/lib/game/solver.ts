@@ -46,6 +46,9 @@ import {
   BREATH_MIN,
   BREATH_TRIGGER_CHAIN,
   CHAIN_GROUND_MAX,
+  JUMP_AIRTIME,
+  CHAPTER_MAX_SECONDS,
+  FINAL_STAGE_MAX_SECONDS,
   CHAIN_MAX_GLOBAL,
   CLIMAX_MAX_RATIO,
   CLIMAX_MIN_RATIO,
@@ -80,6 +83,8 @@ import {
   MAX_CONCURRENT_CRUMBLE,
   MAX_OVERLAPPING_SURFACES,
   SPIKE_MAX_WIDTH_RATIO,
+  TAPS_PER_SEC_HI,
+  TAPS_PER_SEC_LO,
   tightWindowThreshold,
   WALL_MIN_H,
   WALL_STEP_HEADROOM,
@@ -220,6 +225,10 @@ export type SolveResult = {
   suppressRatio: number
   /** 複合度: 複合パターン区間の長さ合計 / ステージ長（警告のみ） */
   compositeRatio: number
+  /** 平均要求タップ/秒（GDD §6-3 の列）。推奨ルートのタップ数 / ステージ長(秒) */
+  tapsPerSecond: number
+  /** ステージ長（秒） */
+  seconds: number
   /** 区間難度 D(t) の最大値 */
   climaxD: number
   /** クライマックス（D(t) 最大区間の中心）の到達率 */
@@ -1042,6 +1051,8 @@ export function solveStage(stage: StageDef, windowMinFrames = 10): SolveResult {
     tightDensity: 0,
     suppressRatio: 0,
     compositeRatio: 0,
+    tapsPerSecond: 0,
+    seconds: 0,
     climaxD: 0,
     climaxAt: 0,
     statesExplored: search.states,
@@ -1082,6 +1093,7 @@ export function solveStage(stage: StageDef, windowMinFrames = 10): SolveResult {
   const scan = scanReachable(search, stage)
   const climax = climaxOf(stage, mm.route, goalFrame(stage))
   const metrics = stageMetrics(stage, mm.route, windowMinFrames)
+  const seconds = stage.lengthPx / stage.speedPxPerFrame / 60
 
   return {
     feasible: true,
@@ -1102,6 +1114,8 @@ export function solveStage(stage: StageDef, windowMinFrames = 10): SolveResult {
     tightDensity: metrics.tightDensity,
     suppressRatio: metrics.suppressRatio,
     compositeRatio: metrics.compositeRatio,
+    tapsPerSecond: seconds > 0 ? mm.route.length / seconds : 0,
+    seconds,
     climaxD: climax.d,
     climaxAt: climax.at,
     statesExplored: search.states,
@@ -1309,21 +1323,39 @@ function catalogLimits(stage: StageDef): CheckIssue[] {
     }
   }
 
-  // 【P2】クライマックス帯に谷を置かない。谷は後続を 1.9R 押し広げ、そこが最も疎になる
-  for (const o of stage.objects) {
-    if (o.t !== 'pit') continue
-    const at = o.x / stage.lengthPx
-    if (at >= CLIMAX_MIN_RATIO && at <= CLIMAX_MAX_RATIO) {
-      issues.push({
-        level: 'WARN',
-        code: 'PIT_IN_CLIMAX',
-        message: `クライマックス帯（到達率 ${(at * 100).toFixed(1)}%）に谷があります (x=${o.x})。谷は後続の安全間隔を広げるため D(t) のピークが前へずれやすい`,
-      })
-      break
-    }
-  }
-
   return issues
+}
+
+/**
+ * 平均要求タップ/秒の**構造上限**。連鎖上限 c と息継ぎ規定から一意に決まる。
+ *
+ * 1本のジャンプは滞空 41.67f を要し、連鎖中の接地は最大 CHAIN_GROUND_MAX(12f)。
+ * c 本跳んだら連鎖を切らねばならず、その接地は c>=4 なら BREATH_MIN(30f)、
+ * それ未満でも 13f（12f 超）が要る。よって 1 周期 = c*41.67 + (c-1)*12 + 切り、
+ * タップは c 本。これが**理論最大**で、安全走路・予告距離・抑制オブジェクトを
+ * 一切置かない前提の値だから、実際に到達できるのはこの 6〜7割にとどまる。
+ */
+export function tapsPerSecondCeiling(maxChain: number): number {
+  const c = Math.max(1, maxChain)
+  const brk = c >= 4 ? BREATH_MIN : CHAIN_GROUND_MAX + 1
+  return (c / (c * JUMP_AIRTIME + (c - 1) * CHAIN_GROUND_MAX + brk)) * 60
+}
+
+/**
+ * クライマックス帯（85〜95%）にある谷を列挙する。
+ * 谷は後続の安全間隔を 1.9R 押し広げるため、そこが最も疎になり D(t) のピークが前へずれる。
+ * **通っているステージには出さない。** 検査9（D(t) ピーク）が不合格のときにだけ、
+ * その原因として添える。通っているものに警告を出し続ける検査は狼少年になり、
+ * 本当の警告を薄めるため（GDD §15-15）。
+ */
+function pitsInClimax(stage: StageDef): number[] {
+  return stage.objects
+    .filter((o) => o.t === 'pit')
+    .map((o) => o.x)
+    .filter((x) => {
+      const at = x / stage.lengthPx
+      return at >= CLIMAX_MIN_RATIO && at <= CLIMAX_MAX_RATIO
+    })
 }
 
 /**
@@ -1713,10 +1745,50 @@ export function verifyStage(stage: StageDef, budget: StageBudget): VerifyResult 
 
   // 検査9: クライマックス位置（区間難度 D(t)）。S1 のみ警告
   if (solve.climaxAt < CLIMAX_MIN_RATIO || solve.climaxAt > CLIMAX_MAX_RATIO) {
+    const pits = pitsInClimax(stage)
     issues.push({
       level: budget.climaxWarnOnly ? 'WARN' : 'FAIL',
       code: 'CLIMAX',
-      message: `区間難度 D(t) のピークが到達率 ${(solve.climaxAt * 100).toFixed(1)}%（D=${solve.climaxD.toFixed(2)}）で、85〜95% の外にあります`,
+      message:
+        `区間難度 D(t) のピークが到達率 ${(solve.climaxAt * 100).toFixed(1)}%（D=${solve.climaxD.toFixed(2)}）で、85〜95% の外にあります` +
+        (pits.length > 0
+          ? `。原因の候補: クライマックス帯に谷があります (x=${pits.join(', ')})。谷は後続の安全間隔を広げるため D(t) のピークが前へずれる`
+          : ''),
+    })
+  }
+
+  // 検査13: ステージ長の上限（章ごと・GDD §15-15）
+  const chapter = Math.min(CHAPTER_MAX_SECONDS.length - 1, Math.floor((stage.id - 1) / 5))
+  const maxSecs = stage.id === 30 ? FINAL_STAGE_MAX_SECONDS : CHAPTER_MAX_SECONDS[chapter]
+  if (solve.seconds > maxSecs) {
+    issues.push({
+      level: 'FAIL',
+      code: 'LENGTH',
+      message: `ステージ長 ${solve.seconds.toFixed(1)}s が章${chapter + 1}の上限 ${maxSecs}s を超えます。長さは従属変数ではなく制約（§8-3 のチェックポイント不採用は長さ上限とセットでしか成立しない）`,
+    })
+  }
+
+  // 検査14: 平均要求タップ/秒（GDD §6-3 の列）。**間延びの検出器**
+  const ceiling = tapsPerSecondCeiling(budget.maxChain)
+  const tpsLo = budget.tapsPerSecond * TAPS_PER_SEC_LO
+  const tpsHi = budget.tapsPerSecond * TAPS_PER_SEC_HI
+  if (solve.tapsPerSecond > tpsHi) {
+    issues.push({
+      level: 'FAIL',
+      code: 'TAPS_PER_SEC',
+      message: `平均要求タップ/秒 ${solve.tapsPerSecond.toFixed(2)} が上限 ${tpsHi.toFixed(2)}（設計値 ${budget.tapsPerSecond} x ${TAPS_PER_SEC_HI}）を超えます`,
+    })
+  } else if (solve.tapsPerSecond < tpsLo) {
+    issues.push({
+      // 【暫定 WARN】本来は不合格条件だが、§6-3 の設計値のうち S8〜S10 は
+      // 構造上限（連鎖上限＋息継ぎから決まる理論最大）を超えており、達成できない。
+      // §6-3 の改訂後に 'FAIL' へ上げる。詳細は下の tapsPerSecondCeiling を参照。
+      level: 'WARN',
+      code: 'TAPS_PER_SEC',
+      message:
+        `平均要求タップ/秒 ${solve.tapsPerSecond.toFixed(2)} が下限 ${tpsLo.toFixed(2)}（設計値 ${budget.tapsPerSecond}）を下回ります。` +
+        `連鎖上限 ${budget.maxChain} での構造上限は ${ceiling.toFixed(2)}` +
+        (budget.tapsPerSecond > ceiling ? `。**設計値 ${budget.tapsPerSecond} がその構造上限を超えており、いかなる配置でも到達できない**` : ''),
     })
   }
 

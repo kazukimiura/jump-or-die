@@ -22,16 +22,16 @@ import type { StageBudget, StageDef } from '@/lib/game/types'
  * S4〜S10 のステージ実体は本幕のスコープ外。
  */
 export const STAGE_BUDGETS: Record<number, StageBudget> = {
-  1: { objectCount: 11, maxChain: 1, windowMinFrames: 20, windowMaxFrames: 40, climaxAt: 0.88, climaxWarnOnly: true, tightDensity: [0.0, 0.05], suppressRatio: [0.0, 0.1], compositeRatio: [0.0, 0.1] },
-  2: { objectCount: 17, maxChain: 2, windowMinFrames: 18, windowMaxFrames: 32, climaxAt: 0.9, climaxWarnOnly: false, tightDensity: [0.0, 0.05], suppressRatio: [0.0, 0.1], compositeRatio: [0.0, 0.1] },
-  3: { objectCount: 23, maxChain: 2, windowMinFrames: 16, windowMaxFrames: 26, climaxAt: 0.86, climaxWarnOnly: false, tightDensity: [0.0, 0.05], suppressRatio: [0.0, 0.1], compositeRatio: [0.0, 0.1] },
-  4: { objectCount: 30, maxChain: 3, windowMinFrames: 14, windowMaxFrames: 22, climaxAt: 0.91, climaxWarnOnly: false, tightDensity: [0.0, 0.05], suppressRatio: [0.0, 0.1], compositeRatio: [0.0, 0.1] },
-  5: { objectCount: 34, maxChain: 3, windowMinFrames: 12, windowMaxFrames: 19, climaxAt: 0.88, climaxWarnOnly: false, tightDensity: [0.0, 0.05], suppressRatio: [0.0, 0.1], compositeRatio: [0.0, 0.1] },
-  6: { objectCount: 43, maxChain: 4, windowMinFrames: 10, windowMaxFrames: 16, climaxAt: 0.92, climaxWarnOnly: false, tightDensity: [0.0, 0.12], suppressRatio: [0.05, 0.2], compositeRatio: [0.0, 0.25] },
-  7: { objectCount: 47, maxChain: 4, windowMinFrames: 9, windowMaxFrames: 14, climaxAt: 0.89, climaxWarnOnly: false, tightDensity: [0.0, 0.12], suppressRatio: [0.05, 0.2], compositeRatio: [0.0, 0.25] },
-  8: { objectCount: 58, maxChain: 5, windowMinFrames: 8, windowMaxFrames: 12, climaxAt: 0.93, climaxWarnOnly: false, tightDensity: [0.0, 0.12], suppressRatio: [0.05, 0.2], compositeRatio: [0.0, 0.25] },
-  9: { objectCount: 72, maxChain: 5, windowMinFrames: 11, windowMaxFrames: 13, climaxAt: 0.9, climaxWarnOnly: false, tightDensity: [0.0, 0.12], suppressRatio: [0.05, 0.2], compositeRatio: [0.0, 0.25] },
-  10: { objectCount: 90, maxChain: 5, windowMinFrames: 11, windowMaxFrames: 13, climaxAt: 0.95, climaxWarnOnly: false, tightDensity: [0.0, 0.12], suppressRatio: [0.05, 0.2], compositeRatio: [0.0, 0.25] },
+  1: { objectCount: 11, maxChain: 1, windowMinFrames: 20, windowMaxFrames: 40, climaxAt: 0.88, climaxWarnOnly: true, tightDensity: [0.0, 0.05], suppressRatio: [0.0, 0.1], compositeRatio: [0.0, 0.1], tapsPerSecond: 0.4 },
+  2: { objectCount: 17, maxChain: 2, windowMinFrames: 18, windowMaxFrames: 32, climaxAt: 0.9, climaxWarnOnly: false, tightDensity: [0.0, 0.05], suppressRatio: [0.0, 0.1], compositeRatio: [0.0, 0.1], tapsPerSecond: 0.48 },
+  3: { objectCount: 23, maxChain: 2, windowMinFrames: 16, windowMaxFrames: 26, climaxAt: 0.86, climaxWarnOnly: false, tightDensity: [0.0, 0.05], suppressRatio: [0.0, 0.1], compositeRatio: [0.0, 0.1], tapsPerSecond: 0.55 },
+  4: { objectCount: 30, maxChain: 3, windowMinFrames: 14, windowMaxFrames: 22, climaxAt: 0.91, climaxWarnOnly: false, tightDensity: [0.0, 0.05], suppressRatio: [0.0, 0.1], compositeRatio: [0.0, 0.1], tapsPerSecond: 0.62 },
+  5: { objectCount: 34, maxChain: 3, windowMinFrames: 12, windowMaxFrames: 19, climaxAt: 0.88, climaxWarnOnly: false, tightDensity: [0.0, 0.05], suppressRatio: [0.0, 0.1], compositeRatio: [0.0, 0.1], tapsPerSecond: 0.68 },
+  6: { objectCount: 43, maxChain: 4, windowMinFrames: 10, windowMaxFrames: 16, climaxAt: 0.92, climaxWarnOnly: false, tightDensity: [0.0, 0.12], suppressRatio: [0.05, 0.2], compositeRatio: [0.0, 0.25], tapsPerSecond: 0.75 },
+  7: { objectCount: 47, maxChain: 4, windowMinFrames: 9, windowMaxFrames: 14, climaxAt: 0.89, climaxWarnOnly: false, tightDensity: [0.0, 0.12], suppressRatio: [0.05, 0.2], compositeRatio: [0.0, 0.25], tapsPerSecond: 0.82 },
+  8: { objectCount: 58, maxChain: 5, windowMinFrames: 8, windowMaxFrames: 12, climaxAt: 0.93, climaxWarnOnly: false, tightDensity: [0.0, 0.12], suppressRatio: [0.05, 0.2], compositeRatio: [0.0, 0.25], tapsPerSecond: 0.9 },
+  9: { objectCount: 72, maxChain: 5, windowMinFrames: 11, windowMaxFrames: 13, climaxAt: 0.9, climaxWarnOnly: false, tightDensity: [0.0, 0.12], suppressRatio: [0.05, 0.2], compositeRatio: [0.0, 0.25], tapsPerSecond: 1.0 },
+  10: { objectCount: 90, maxChain: 5, windowMinFrames: 11, windowMaxFrames: 13, climaxAt: 0.95, climaxWarnOnly: false, tightDensity: [0.0, 0.12], suppressRatio: [0.05, 0.2], compositeRatio: [0.0, 0.25], tapsPerSecond: 1.1 },
 }
 
 // ---------------------------------------------------------------------------
@@ -177,17 +177,20 @@ const STAGE_3: StageDef = {
 }
 
 // ---------------------------------------------------------------------------
-// S4 LOW SKY — 速度 3.25 px/f / 43秒 / 8,356px
+// S4 LOW SKY — 速度 3.25 px/f / 40秒 / 7,785px
 // 新規ギミック: OB-04 天井
-// 実測（第2次バッチ）: 生存窓 17f / 最悪 17f / 誤帰属距離 0 /
-//   連鎖 2 / 狭窓密度 0.000 / 抑制率 0.100 / 複合度 0.000 /
-//   D(t) 3.64 @89.2% / クリア 2554f
+// 2026-09-22 §15-15 の間引き: 障害物 31 → 30（-1）。
+//   中盤の反復区間のみを種別比を保って間引き、クライマックス帯（85%〜）は無改変。
+//   間隔は縮めず、消えた区間の元の間隔の最大値を採って詰めた。
+// 実測: 生存窓 17f / 最悪 17f / 連鎖 2 /
+//   狭窓密度 0.000 / 抑制率 0.069 / 複合度 0.000 /
+//   D(t) 3.64 @92.3% / タップ 27本 = 0.68/秒（構造上限 1.11）
 // ---------------------------------------------------------------------------
 const STAGE_4: StageDef = {
   id: 4,
   name: 'LOW SKY',
   speedPxPerFrame: 3.25,
-  lengthPx: 8356,
+  lengthPx: 7785,
   safeRunwayPx: 156,
   groundY: 148,
   objects: [
@@ -195,6 +198,7 @@ const STAGE_4: StageDef = {
     { t: 'block', x: 501, w: 24, h: 32 },
     { t: 'pit', x: 768, w: 48 },
     { t: 'spike', x: 1073, n: 2 },
+    // 予告マーカー（ルールB）
     { t: 'warn', x: 1240 },
     { t: 'ceil', x: 1370, w: 48, y: 96 },
     { t: 'block', x: 1621, w: 12, h: 16 },
@@ -202,41 +206,44 @@ const STAGE_4: StageDef = {
     { t: 'pit', x: 2140, w: 56 },
     { t: 'spike', x: 2453, n: 3 },
     { t: 'block', x: 2693, w: 24, h: 32 },
-    { t: 'ceil', x: 2947, w: 64, y: 96 },
-    { t: 'block', x: 3214, w: 12, h: 16 },
-    { t: 'pit', x: 3456, w: 56 },
-    { t: 'block', x: 3769, w: 12, h: 16 },
-    { t: 'spike', x: 4011, n: 2 },
-    { t: 'block', x: 4257, w: 12, h: 16 },
-    { t: 'block', x: 4499, w: 24, h: 32 },
-    { t: 'spike', x: 4753, n: 2 },
-    { t: 'pit', x: 4999, w: 56 },
-    { t: 'block', x: 5312, w: 12, h: 16 },
-    { t: 'spike', x: 5554, n: 2 },
-    { t: 'block', x: 5800, w: 12, h: 16 },
-    { t: 'block', x: 6042, w: 24, h: 32 },
-    { t: 'spike', x: 6296, n: 2 },
-    { t: 'block', x: 6542, w: 12, h: 16 },
-    { t: 'spike', x: 6784, n: 3 },
-    { t: 'block', x: 7038, w: 12, h: 16 },
-    { t: 'pit', x: 7307, w: 104 },
-    { t: 'block', x: 7668, w: 12, h: 16 },
-    { t: 'spike', x: 7872, n: 3 },
+    { t: 'block', x: 2947, w: 12, h: 16 },
+    { t: 'pit', x: 3189, w: 56 },
+    { t: 'block', x: 3502, w: 12, h: 16 },
+    { t: 'spike', x: 3744, n: 2 },
+    { t: 'block', x: 3990, w: 12, h: 16 },
+    { t: 'block', x: 4232, w: 24, h: 32 },
+    { t: 'spike', x: 4486, n: 2 },
+    { t: 'pit', x: 4732, w: 56 },
+    { t: 'block', x: 5045, w: 12, h: 16 },
+    { t: 'spike', x: 5287, n: 2 },
+    { t: 'block', x: 5533, w: 12, h: 16 },
+    { t: 'block', x: 5775, w: 24, h: 32 },
+    { t: 'spike', x: 6029, n: 2 },
+    { t: 'block', x: 6275, w: 12, h: 16 },
+    { t: 'spike', x: 6517, n: 3 },
+    // クライマックス帯（到達率 85〜95%）— §15-15 の間引きでも構造を保存した区間
+    { t: 'block', x: 6771, w: 12, h: 16 },
+    { t: 'pit', x: 7040, w: 104 },
+    { t: 'block', x: 7401, w: 12, h: 16 },
+    { t: 'spike', x: 7605, n: 3 },
   ],
 }
 
 // ---------------------------------------------------------------------------
-// S5 TEST I — 速度 3.5 px/f / 48秒 / 10,169px
+// S5 TEST I — 速度 3.5 px/f / 39秒 / 8,176px
 // 新規ギミック: 章I 章末試験（新規なし）
-// 実測（第2次バッチ）: 生存窓 14f / 最悪 14f / 誤帰属距離 0 /
-//   連鎖 2 / 狭窓密度 0.000 / 抑制率 0.086 / 複合度 0.000 /
-//   D(t) 4.24 @86.4% / クリア 2890f
+// 2026-09-22 §15-15 の間引き: 障害物 35 → 29（-6）。
+//   中盤の反復区間のみを種別比を保って間引き、クライマックス帯（85%〜）は無改変。
+//   間隔は縮めず、消えた区間の元の間隔の最大値を採って詰めた。
+// 実測: 生存窓 15f / 最悪 15f / 連鎖 2 /
+//   狭窓密度 0.000 / 抑制率 0.069 / 複合度 0.000 /
+//   D(t) 4.04 @87.8% / タップ 27本 = 0.69/秒（構造上限 1.11）
 // ---------------------------------------------------------------------------
 const STAGE_5: StageDef = {
   id: 5,
   name: 'TEST I',
   speedPxPerFrame: 3.5,
-  lengthPx: 10169,
+  lengthPx: 8176,
   safeRunwayPx: 168,
   groundY: 148,
   objects: [
@@ -249,47 +256,45 @@ const STAGE_5: StageDef = {
     { t: 'spike', x: 1926, n: 3 },
     { t: 'block', x: 2184, w: 12, h: 16 },
     { t: 'pit', x: 2430, w: 72 },
-    { t: 'block', x: 2779, w: 24, h: 32 },
-    { t: 'spike', x: 3034, n: 2 },
-    { t: 'block', x: 3276, w: 12, h: 16 },
-    { t: 'ceil', x: 3536, w: 64, y: 96 },
-    { t: 'block', x: 3834, w: 12, h: 16 },
-    { t: 'pit', x: 4080, w: 84 },
-    { t: 'spike', x: 4441, n: 3 },
-    { t: 'block', x: 4691, w: 12, h: 16 },
-    { t: 'block', x: 4937, w: 24, h: 32 },
-    { t: 'spike', x: 5192, n: 2 },
-    { t: 'pit', x: 5442, w: 96 },
-    { t: 'block', x: 5815, w: 12, h: 16 },
-    { t: 'spike', x: 6053, n: 3 },
-    { t: 'ceil', x: 6311, w: 48, y: 96 },
-    { t: 'block', x: 6585, w: 12, h: 16 },
-    { t: 'block', x: 6831, w: 24, h: 32 },
-    { t: 'spike', x: 7086, n: 2 },
-    { t: 'pit', x: 7336, w: 104 },
-    { t: 'block', x: 7717, w: 12, h: 16 },
-    { t: 'spike', x: 7955, n: 3 },
-    { t: 'block', x: 8205, w: 12, h: 16 },
-    { t: 'block', x: 8451, w: 24, h: 32 },
-    { t: 'spike', x: 8706, n: 2 },
-    { t: 'pit', x: 8970, w: 120 },
-    { t: 'block', x: 9367, w: 12, h: 16 },
-    { t: 'spike', x: 9586, n: 3 },
+    { t: 'spike', x: 2779, n: 2 },
+    { t: 'block', x: 3021, w: 12, h: 16 },
+    { t: 'ceil', x: 3281, w: 64, y: 96 },
+    { t: 'block', x: 3579, w: 12, h: 16 },
+    { t: 'pit', x: 3825, w: 84 },
+    { t: 'spike', x: 4186, n: 3 },
+    { t: 'block', x: 4436, w: 12, h: 16 },
+    { t: 'block', x: 4725, w: 12, h: 16 },
+    { t: 'spike', x: 4963, n: 3 },
+    { t: 'block', x: 5221, w: 12, h: 16 },
+    { t: 'block', x: 5467, w: 24, h: 32 },
+    { t: 'spike', x: 5722, n: 2 },
+    { t: 'pit', x: 5972, w: 104 },
+    { t: 'spike', x: 6353, n: 3 },
+    { t: 'block', x: 6603, w: 12, h: 16 },
+    { t: 'block', x: 6849, w: 24, h: 32 },
+    // クライマックス帯（到達率 85〜95%）— §15-15 の間引きでも構造を保存した区間
+    { t: 'spike', x: 7104, n: 2 },
+    { t: 'pit', x: 7368, w: 120 },
+    { t: 'block', x: 7765, w: 12, h: 16 },
+    { t: 'spike', x: 7984, n: 3 },
   ],
 }
 
 // ---------------------------------------------------------------------------
-// S6 FLOATING — 速度 3.75 px/f / 80秒 / 17,983px
+// S6 FLOATING — 速度 3.75 px/f / 53秒 / 12,023px
 // 新規ギミック: OB-05 浮遊足場
-// 実測（第2次バッチ）: 生存窓 11f / 最悪 11f / 誤帰属距離 0 /
-//   連鎖 4 / 狭窓密度 0.000 / 抑制率 0.143 / 複合度 0.000 /
-//   D(t) 5.13 @89.5% / クリア 4781f
+// 2026-09-22 §15-15 の間引き: 障害物 43 → 30（-13）。
+//   中盤の反復区間のみを種別比を保って間引き、クライマックス帯（85%〜）は無改変。
+//   間隔は縮めず、消えた区間の元の間隔の最大値を採って詰めた。
+// 実測: 生存窓 12f / 最悪 11f / 連鎖 4 /
+//   狭窓密度 0.075 / 抑制率 0.138 / 複合度 0.000 /
+//   D(t) 4.81 @91.0% / タップ 23本 = 0.43/秒（構造上限 1.03）
 // ---------------------------------------------------------------------------
 const STAGE_6: StageDef = {
   id: 6,
   name: 'FLOATING',
   speedPxPerFrame: 3.75,
-  lengthPx: 17983,
+  lengthPx: 12023,
   safeRunwayPx: 180,
   groundY: 148,
   objects: [
@@ -297,60 +302,52 @@ const STAGE_6: StageDef = {
     { t: 'pit', x: 693, w: 64 },
     { t: 'spike', x: 1201, n: 2 },
     { t: 'block', x: 1568, w: 24, h: 32 },
+    // 予告マーカー（ルールB）
     { t: 'warn', x: 1961 },
     { t: 'plat', x: 2179, y: 112 },
     { t: 'block', x: 2562, w: 12, h: 16 },
     { t: 'plat', x: 2925, y: 112 },
     { t: 'spike', x: 3308, n: 3 },
-    { t: 'plat', x: 3683, y: 104 },
-    { t: 'block', x: 4066, w: 12, h: 16 },
-    { t: 'ceil', x: 4429, w: 48, y: 96 },
-    { t: 'ceil', x: 5016, w: 48, y: 96 },
-    { t: 'pit', x: 5439, w: 121 },
-    { t: 'block', x: 6004, w: 12, h: 16 },
-    { t: 'plat', x: 6367, y: 104 },
-    { t: 'spike', x: 6750, n: 2 },
-    { t: 'block', x: 7117, w: 24, h: 32 },
-    { t: 'ceil', x: 7510, w: 64, y: 96 },
-    { t: 'ceil', x: 8113, w: 48, y: 96 },
-    { t: 'block', x: 8512, w: 12, h: 16 },
-    { t: 'pit', x: 8899, w: 121 },
-    { t: 'plat', x: 9464, y: 96 },
-    { t: 'spike', x: 9847, n: 3 },
-    { t: 'block', x: 10210, w: 12, h: 16 },
-    { t: 'block', x: 10573, w: 24, h: 32 },
-    { t: 'spike', x: 10966, n: 2 },
-    { t: 'plat', x: 11333, y: 104 },
-    { t: 'ceil', x: 11716, w: 48, y: 96 },
-    { t: 'ceil', x: 12303, w: 48, y: 96 },
-    { t: 'block', x: 12702, w: 12, h: 16 },
-    { t: 'pit', x: 13089, w: 121 },
-    { t: 'spike', x: 13654, n: 3 },
-    { t: 'block', x: 14017, w: 12, h: 16 },
-    { t: 'block', x: 14380, w: 24, h: 32 },
-    { t: 'plat', x: 14773, y: 112 },
-    { t: 'spike', x: 15156, n: 2 },
-    { t: 'block', x: 15511, w: 12, h: 16 },
-    { t: 'pit', x: 15898, w: 140 },
-    { t: 'spike', x: 16334, n: 3 },
-    { t: 'block', x: 16545, w: 12, h: 16 },
-    { t: 'spike', x: 16779, n: 2 },
-    { t: 'block', x: 16982, w: 12, h: 16 },
+    { t: 'ceil', x: 3683, w: 48, y: 96 },
+    { t: 'ceil', x: 4270, w: 48, y: 96 },
+    { t: 'block', x: 4762, w: 12, h: 16 },
+    { t: 'plat', x: 5125, y: 104 },
+    { t: 'ceil', x: 5696, w: 48, y: 96 },
+    { t: 'block', x: 6095, w: 12, h: 16 },
+    { t: 'pit', x: 6482, w: 121 },
+    { t: 'spike', x: 7047, n: 3 },
+    { t: 'block', x: 7422, w: 24, h: 32 },
+    { t: 'plat', x: 7815, y: 104 },
+    { t: 'ceil', x: 8386, w: 48, y: 96 },
+    { t: 'spike', x: 8878, n: 3 },
+    { t: 'block', x: 9241, w: 12, h: 16 },
+    { t: 'plat', x: 9622, y: 112 },
+    { t: 'spike', x: 10005, n: 2 },
+    // クライマックス帯（到達率 85〜95%）— §15-15 の間引きでも構造を保存した区間
+    { t: 'block', x: 10360, w: 12, h: 16 },
+    { t: 'pit', x: 10747, w: 140 },
+    { t: 'spike', x: 11183, n: 3 },
+    { t: 'block', x: 11394, w: 12, h: 16 },
+    { t: 'spike', x: 11628, n: 2 },
+    { t: 'block', x: 11831, w: 12, h: 16 },
   ],
 }
 
 // ---------------------------------------------------------------------------
-// S7 THE LIFT — 速度 4 px/f / 79秒 / 18,879px
+// S7 THE LIFT — 速度 4 px/f / 54秒 / 13,005px
 // 新規ギミック: OB-07 昇降 / OB-10 バネ
-// 実測（第2次バッチ）: 生存窓 11f / 最悪 11f / 誤帰属距離 0 /
-//   連鎖 2 / 狭窓密度 0.000 / 抑制率 0.116 / 複合度 0.058 /
-//   D(t) 5.32 @89.5% / クリア 4706f
+// 2026-09-22 §15-15 の間引き: 障害物 49 → 35（-14）。
+//   中盤の反復区間のみを種別比を保って間引き、クライマックス帯（85%〜）は無改変。
+//   間隔は縮めず、消えた区間の元の間隔の最大値を採って詰めた。
+// 実測: 生存窓 11f / 最悪 11f / 連鎖 2 /
+//   狭窓密度 0.018 / 抑制率 0.129 / 複合度 0.031 /
+//   D(t) 5.32 @91.3% / タップ 24本 = 0.44/秒（構造上限 1.03）
 // ---------------------------------------------------------------------------
 const STAGE_7: StageDef = {
   id: 7,
   name: 'THE LIFT',
   speedPxPerFrame: 4,
-  lengthPx: 18879,
+  lengthPx: 13005,
   safeRunwayPx: 192,
   groundY: 148,
   objects: [
@@ -358,66 +355,58 @@ const STAGE_7: StageDef = {
     { t: 'pit', x: 684, w: 72 },
     { t: 'spike', x: 1184, n: 2 },
     { t: 'plat', x: 1516, y: 112 },
+    // 予告マーカー（ルールB）
     { t: 'warn', x: 1887 },
     { t: 'lift', x: 2098, y: 132, amp: 24, period: 90, phase: 0 },
     { t: 'block', x: 2453, w: 12, h: 16 },
     { t: 'lift', x: 2785, y: 132, amp: 24, period: 90, phase: 30 },
     { t: 'spike', x: 3140, n: 3 },
+    // 予告マーカー（ルールB）
     { t: 'warn', x: 3416 },
     { t: 'spring', x: 3627 },
     { t: 'block', x: 3978, w: 12, h: 16 },
-    { t: 'spring', x: 4310 },
-    { t: 'ceil', x: 4661, w: 48, y: 96 },
-    { t: 'ceil', x: 5183, w: 48, y: 96 },
-    { t: 'block', x: 5547, w: 24, h: 32 },
-    { t: 'lift', x: 5927, y: 124, amp: 32, period: 100, phase: 0 },
-    { t: 'ceil', x: 6282, w: 48, y: 96 },
-    { t: 'lift', x: 6646, y: 124, amp: 32, period: 100, phase: 50 },
-    { t: 'block', x: 7001, w: 12, h: 16 },
-    { t: 'pit', x: 7352, w: 130 },
-    { t: 'plat', x: 7910, y: 104 },
-    { t: 'spike', x: 8281, n: 2 },
-    { t: 'spring', x: 8613 },
-    { t: 'block', x: 8941, w: 12, h: 16 },
-    { t: 'ceil', x: 9280, w: 64, y: 96 },
-    { t: 'lift', x: 9660, y: 132, amp: 24, period: 80, phase: 20 },
-    { t: 'spike', x: 10015, n: 3 },
-    { t: 'block', x: 10343, w: 12, h: 16 },
-    { t: 'pit', x: 10694, w: 130 },
-    { t: 'block', x: 11252, w: 24, h: 32 },
-    { t: 'spike', x: 11632, n: 2 },
-    { t: 'plat', x: 11964, y: 112 },
-    { t: 'block', x: 12335, w: 12, h: 16 },
-    { t: 'ceil', x: 12674, w: 48, y: 96 },
-    { t: 'lift', x: 13038, y: 124, amp: 32, period: 90, phase: 40 },
-    { t: 'pit', x: 13393, w: 130 },
-    { t: 'spike', x: 13951, n: 3 },
-    { t: 'block', x: 14279, w: 12, h: 16 },
-    { t: 'block', x: 14611, w: 24, h: 32 },
-    { t: 'spring', x: 14991 },
-    { t: 'block', x: 15319, w: 12, h: 16 },
-    { t: 'spike', x: 15651, n: 2 },
-    { t: 'pit', x: 16006, w: 130 },
-    { t: 'block', x: 16564, w: 12, h: 16 },
-    { t: 'block', x: 16813, w: 24, h: 32 },
-    { t: 'pit', x: 17101, w: 150 },
-    { t: 'block', x: 17568, w: 12, h: 16 },
-    { t: 'spike', x: 17817, n: 3 },
+    { t: 'ceil', x: 4329, w: 48, y: 96 },
+    { t: 'ceil', x: 4851, w: 48, y: 96 },
+    { t: 'lift', x: 5255, y: 124, amp: 32, period: 100, phase: 0 },
+    { t: 'ceil', x: 5610, w: 48, y: 96 },
+    { t: 'block', x: 5997, w: 12, h: 16 },
+    { t: 'plat', x: 6437, y: 104 },
+    { t: 'spring', x: 6808 },
+    { t: 'lift', x: 7147, y: 132, amp: 24, period: 80, phase: 20 },
+    { t: 'spike', x: 7502, n: 3 },
+    { t: 'block', x: 7830, w: 12, h: 16 },
+    { t: 'pit', x: 8181, w: 130 },
+    { t: 'block', x: 8739, w: 24, h: 32 },
+    { t: 'ceil', x: 9119, w: 48, y: 96 },
+    { t: 'spike', x: 9595, n: 3 },
+    { t: 'block', x: 9923, w: 12, h: 16 },
+    { t: 'block', x: 10291, w: 12, h: 16 },
+    { t: 'spike', x: 10623, n: 2 },
+    { t: 'pit', x: 10978, w: 130 },
+    // クライマックス帯（到達率 85〜95%）— §15-15 の間引きでも構造を保存した区間
+    { t: 'block', x: 11536, w: 12, h: 16 },
+    { t: 'block', x: 11785, w: 24, h: 32 },
+    { t: 'pit', x: 12073, w: 150 },
+    { t: 'block', x: 12540, w: 12, h: 16 },
+    { t: 'spike', x: 12789, n: 3 },
   ],
 }
 
 // ---------------------------------------------------------------------------
-// S8 FIRST WINGS — 速度 4.25 px/f / 80秒 / 20,504px
+// S8 FIRST WINGS — 速度 4.25 px/f / 54秒 / 13,850px
 // 新規ギミック: OB-08 飛行体（vx=1.0）
-// 実測（第2次バッチ）: 生存窓 11f / 最悪 11f / 誤帰属距離 0 /
-//   連鎖 2 / 狭窓密度 0.000 / 抑制率 0.191 / 複合度 0.074 /
-//   D(t) 5.09 @89.9% / クリア 4812f
+// 2026-09-22 §15-15 の間引き: 障害物 50 → 35（-15）。
+//   中盤の反復区間のみを種別比を保って間引き、クライマックス帯（85%〜）は無改変。
+//   間隔は縮めず、消えた区間の元の間隔の最大値を採って詰めた。
+// 実測: 生存窓 11f / 最悪 11f / 連鎖 2 /
+//   狭窓密度 0.000 / 抑制率 0.152 / 複合度 0.056 /
+//   D(t) 5.09 @91.6% / タップ 23本 = 0.42/秒（構造上限 1.05）
 // ---------------------------------------------------------------------------
 const STAGE_8: StageDef = {
   id: 8,
   name: 'FIRST WINGS',
   speedPxPerFrame: 4.25,
-  lengthPx: 20504,
+  lengthPx: 13850,
   safeRunwayPx: 204,
   groundY: 148,
   objects: [
@@ -425,6 +414,7 @@ const STAGE_8: StageDef = {
     { t: 'pit', x: 737, w: 80 },
     { t: 'spike', x: 1287, n: 2 },
     { t: 'plat', x: 1638, y: 112 },
+    // 予告マーカー（ルールB）
     { t: 'warn', x: 2042 },
     { t: 'fly', x: 2273, alt: 'MID', vx: 1 },
     { t: 'block', x: 2620, w: 12, h: 16 },
@@ -435,59 +425,46 @@ const STAGE_8: StageDef = {
     { t: 'lift', x: 4439, y: 132, amp: 24, period: 90, phase: 0 },
     { t: 'ceil', x: 4827, w: 48, y: 96 },
     { t: 'pit', x: 5235, w: 138 },
-    { t: 'block', x: 5843, w: 12, h: 16 },
-    { t: 'spring', x: 6206 },
-    { t: 'fly', x: 6553, alt: 'MID', vx: 1 },
-    { t: 'ceil', x: 6912, w: 48, y: 96 },
-    { t: 'spike', x: 7282, n: 2 },
-    { t: 'plat', x: 7633, y: 104 },
-    { t: 'pit', x: 8037, w: 138 },
-    { t: 'block', x: 8645, w: 12, h: 16 },
-    { t: 'block', x: 9008, w: 24, h: 32 },
-    { t: 'lift', x: 9424, y: 124, amp: 32, period: 100, phase: 40 },
-    { t: 'fly', x: 9812, alt: 'HIGH', vx: 1 },
-    { t: 'spike', x: 10146, n: 3 },
-    { t: 'block', x: 10492, w: 12, h: 16 },
-    { t: 'ceil', x: 10855, w: 64, y: 96 },
-    { t: 'plat', x: 11254, y: 112 },
-    { t: 'spike', x: 11658, n: 2 },
-    { t: 'pit', x: 12034, w: 138 },
-    { t: 'spring', x: 12642 },
-    { t: 'block', x: 12989, w: 12, h: 16 },
-    { t: 'fly', x: 13352, alt: 'MID', vx: 1 },
-    { t: 'block', x: 13699, w: 24, h: 32 },
-    { t: 'spike', x: 14115, n: 3 },
-    { t: 'block', x: 14461, w: 12, h: 16 },
-    { t: 'lift', x: 14824, y: 132, amp: 24, period: 80, phase: 20 },
-    { t: 'ceil', x: 15212, w: 48, y: 96 },
-    { t: 'plat', x: 15595, y: 104 },
-    { t: 'pit', x: 15999, w: 138 },
-    { t: 'spike', x: 16607, n: 2 },
-    { t: 'block', x: 16945, w: 12, h: 16 },
-    { t: 'block', x: 17308, w: 24, h: 32 },
-    { t: 'fly', x: 17724, alt: 'MID', vx: 1 },
-    { t: 'block', x: 18058, w: 12, h: 16 },
-    { t: 'spike', x: 18321, n: 3 },
-    { t: 'pit', x: 18602, w: 159 },
-    { t: 'block', x: 19097, w: 12, h: 16 },
-    { t: 'spike', x: 19360, n: 2 },
+    { t: 'spring', x: 5843 },
+    { t: 'plat', x: 6202, y: 104 },
+    { t: 'block', x: 6704, w: 12, h: 16 },
+    { t: 'lift', x: 7108, y: 124, amp: 32, period: 100, phase: 40 },
+    { t: 'fly', x: 7496, alt: 'HIGH', vx: 1 },
+    { t: 'spike', x: 7830, n: 3 },
+    { t: 'block', x: 8176, w: 12, h: 16 },
+    { t: 'ceil', x: 8539, w: 64, y: 96 },
+    { t: 'spike', x: 8975, n: 2 },
+    { t: 'pit', x: 9351, w: 138 },
+    { t: 'block', x: 9959, w: 24, h: 32 },
+    { t: 'plat', x: 10375, y: 104 },
+    { t: 'spike', x: 10877, n: 2 },
+    { t: 'block', x: 11215, w: 12, h: 16 },
+    { t: 'block', x: 11578, w: 24, h: 32 },
+    // クライマックス帯（到達率 85〜95%）— §15-15 の間引きでも構造を保存した区間
+    { t: 'fly', x: 11994, alt: 'MID', vx: 1 },
+    { t: 'block', x: 12328, w: 12, h: 16 },
+    { t: 'spike', x: 12591, n: 3 },
+    { t: 'pit', x: 12872, w: 159 },
+    { t: 'block', x: 13367, w: 12, h: 16 },
+    { t: 'spike', x: 13630, n: 2 },
   ],
 }
 
 // ---------------------------------------------------------------------------
-// S9 CRUMBLE — 速度 4.5 px/f / 103秒 / 27,815px
+// S9 CRUMBLE — 速度 4.5 px/f / 54秒 / 14,630px
 // 新規ギミック: OB-09 崩落床
-// 狭窓はトゲ床の幅で作る（上面に乗れない唯一の高さ持ち障害物・誤帰属距離 0 を保てる）。
-// クライマックス帯には谷を置かない（谷は後続の安全間隔を広げ D(t) を前へずらすため）。
-// 実測: 生存窓 12f / 最悪 12f / 誤帰属距離 0 / 連鎖 2 /
-//   狭窓密度 0.010 / 抑制率 0.163 / 複合度 0.000 /
-//   D(t) 4.67 @90.6% / クリア 6169f
+// 2026-09-22 §15-15 の間引き: 障害物 82 → 43（-39）。
+//   中盤の反復区間のみを種別比を保って間引き、クライマックス帯（85%〜）は無改変。
+//   間隔は縮めず、消えた区間の元の間隔の最大値を採って詰めた。
+// 実測: 生存窓 12f / 最悪 12f / 連鎖 2 /
+//   狭窓密度 0.018 / 抑制率 0.171 / 複合度 0.043 /
+//   D(t) 4.67 @91.1% / タップ 30本 = 0.55/秒（構造上限 1.05）
 // ---------------------------------------------------------------------------
 const STAGE_9: StageDef = {
   id: 9,
   name: 'CRUMBLE',
   speedPxPerFrame: 4.5,
-  lengthPx: 27815,
+  lengthPx: 14630,
   safeRunwayPx: 216,
   groundY: 148,
   objects: [
@@ -495,6 +472,7 @@ const STAGE_9: StageDef = {
     { t: 'spike', x: 707, n: 6 },
     { t: 'block', x: 1008, w: 24, h: 32 },
     { t: 'pit', x: 1365, w: 120 },
+    // 予告マーカー（ルールB）
     { t: 'warn', x: 1885 },
     { t: 'crumble', x: 2082, y: 116, delay: 10 },
     { t: 'block', x: 2422, w: 12, h: 16 },
@@ -504,92 +482,55 @@ const STAGE_9: StageDef = {
     { t: 'spike', x: 3644, n: 6 },
     { t: 'block', x: 3945, w: 12, h: 16 },
     { t: 'ceil', x: 4256, w: 48, y: 96 },
-    { t: 'spike', x: 4546, n: 7 },
-    { t: 'block', x: 4855, w: 24, h: 32 },
-    { t: 'spike', x: 5212, n: 8 },
-    { t: 'ceil', x: 5529, w: 48, y: 96 },
-    { t: 'spike', x: 5819, n: 9 },
-    { t: 'block', x: 6144, w: 12, h: 16 },
-    { t: 'fly', x: 6455, alt: 'HIGH', vx: 1 },
-    { t: 'spike', x: 6709, n: 10 },
-    { t: 'plat', x: 7052, y: 112 },
-    { t: 'spike', x: 7400, n: 7 },
-    { t: 'spring', x: 7709 },
-    { t: 'spike', x: 7974, n: 9 },
-    { t: 'fly', x: 8299, alt: 'MID', vx: 1 },
-    { t: 'spike', x: 8553, n: 8 },
-    { t: 'block', x: 8870, w: 12, h: 16 },
-    { t: 'ceil', x: 9181, w: 48, y: 96 },
-    { t: 'spike', x: 9471, n: 9 },
-    { t: 'block', x: 9796, w: 24, h: 32 },
-    { t: 'spike', x: 10153, n: 10 },
-    { t: 'ceil', x: 10486, w: 48, y: 96 },
-    { t: 'spike', x: 10776, n: 11 },
-    { t: 'block', x: 11117, w: 12, h: 16 },
-    { t: 'fly', x: 11428, alt: 'HIGH', vx: 1 },
-    { t: 'spike', x: 11682, n: 12 },
-    { t: 'lift', x: 12041, y: 132, amp: 24, period: 90, phase: 30 },
-    { t: 'spike', x: 12373, n: 8 },
-    { t: 'crumble', x: 12700, y: 116, delay: 10 },
-    { t: 'spike', x: 13040, n: 10 },
-    { t: 'fly', x: 13373, alt: 'MID', vx: 1 },
-    { t: 'spike', x: 13627, n: 9 },
-    { t: 'block', x: 13952, w: 12, h: 16 },
-    { t: 'ceil', x: 14263, w: 48, y: 96 },
-    { t: 'spike', x: 14553, n: 10 },
-    { t: 'block', x: 14886, w: 24, h: 32 },
-    { t: 'spike', x: 15243, n: 11 },
-    { t: 'ceil', x: 15584, w: 48, y: 96 },
-    { t: 'spike', x: 15874, n: 12 },
-    { t: 'block', x: 16223, w: 12, h: 16 },
-    { t: 'fly', x: 16534, alt: 'HIGH', vx: 1 },
-    { t: 'spike', x: 16788, n: 13 },
-    { t: 'plat', x: 17155, y: 104 },
-    { t: 'spike', x: 17503, n: 9 },
-    { t: 'block', x: 17828, w: 12, h: 16 },
-    { t: 'spike', x: 18139, n: 11 },
-    { t: 'fly', x: 18480, alt: 'MID', vx: 1 },
-    { t: 'spike', x: 18734, n: 10 },
-    { t: 'block', x: 19067, w: 12, h: 16 },
-    { t: 'ceil', x: 19378, w: 48, y: 96 },
-    { t: 'spike', x: 19668, n: 11 },
-    { t: 'block', x: 20009, w: 24, h: 32 },
-    { t: 'spike', x: 20366, n: 12 },
-    { t: 'ceil', x: 20715, w: 48, y: 96 },
-    { t: 'spike', x: 21005, n: 13 },
-    { t: 'block', x: 21362, w: 12, h: 16 },
-    { t: 'fly', x: 21673, alt: 'HIGH', vx: 1 },
-    { t: 'spike', x: 21927, n: 14 },
-    { t: 'lift', x: 22302, y: 124, amp: 32, period: 100, phase: 50 },
-    { t: 'spike', x: 22634, n: 10 },
-    { t: 'crumble', x: 22977, y: 108, delay: 10 },
-    { t: 'spike', x: 23317, n: 12 },
-    { t: 'block', x: 23666, w: 24, h: 32 },
-    { t: 'spike', x: 24023, n: 13 },
-    { t: 'block', x: 24380, w: 12, h: 16 },
-    { t: 'ceil', x: 24691, w: 64, y: 96 },
-    { t: 'spike', x: 24999, n: 15 },
-    { t: 'block', x: 25335, w: 12, h: 16 },
-    { t: 'spike', x: 25614, n: 12 },
-    { t: 'block', x: 25926, w: 12, h: 16 },
-    { t: 'spike', x: 26205, n: 10 },
+    { t: 'spike', x: 4637, n: 8 },
+    { t: 'block', x: 4954, w: 12, h: 16 },
+    { t: 'plat', x: 5265, y: 112 },
+    { t: 'spike', x: 5613, n: 7 },
+    { t: 'spring', x: 5922 },
+    { t: 'fly', x: 6187, alt: 'MID', vx: 1 },
+    { t: 'ceil', x: 6498, w: 48, y: 96 },
+    { t: 'spike', x: 6879, n: 10 },
+    { t: 'block', x: 7212, w: 12, h: 16 },
+    { t: 'lift', x: 7523, y: 132, amp: 24, period: 90, phase: 30 },
+    { t: 'spike', x: 7855, n: 8 },
+    { t: 'spike', x: 8235, n: 10 },
+    { t: 'block', x: 8648, w: 12, h: 16 },
+    { t: 'spike', x: 8959, n: 13 },
+    { t: 'fly', x: 9379, alt: 'MID', vx: 1 },
+    { t: 'ceil', x: 9690, w: 48, y: 96 },
+    { t: 'spike', x: 9980, n: 11 },
+    { t: 'block', x: 10321, w: 24, h: 32 },
+    { t: 'spike', x: 10678, n: 14 },
+    { t: 'crumble', x: 11106, y: 108, delay: 10 },
+    { t: 'spike', x: 11446, n: 12 },
+    { t: 'block', x: 11795, w: 24, h: 32 },
+    { t: 'spike', x: 12152, n: 13 },
+    // クライマックス帯（到達率 85〜95%）— §15-15 の間引きでも構造を保存した区間
+    { t: 'block', x: 12509, w: 12, h: 16 },
+    { t: 'ceil', x: 12820, w: 64, y: 96 },
+    { t: 'spike', x: 13128, n: 15 },
+    { t: 'block', x: 13464, w: 12, h: 16 },
+    { t: 'spike', x: 13743, n: 12 },
+    { t: 'block', x: 14055, w: 12, h: 16 },
+    { t: 'spike', x: 14334, n: 10 },
   ],
 }
 
 // ---------------------------------------------------------------------------
-// S10 TEST II — 速度 5 px/f / 114秒 / 34,297px
+// S10 TEST II — 速度 5 px/f / 54秒 / 16,168px
 // 新規ギミック: 章II 章末試験（新規なし）
-// 狭窓はトゲ床の幅で作る（上面に乗れない唯一の高さ持ち障害物・誤帰属距離 0 を保てる）。
-// クライマックス帯には谷を置かない（谷は後続の安全間隔を広げ D(t) を前へずらすため）。
-// 実測: 生存窓 12f / 最悪 12f / 誤帰属距離 0 / 連鎖 2 /
-//   狭窓密度 0.009 / 抑制率 0.185 / 複合度 0.000 /
-//   D(t) 4.67 @91.0% / クリア 6849f
+// 2026-09-22 §15-15 の間引き: 障害物 93 → 44（-49）。
+//   中盤の反復区間のみを種別比を保って間引き、クライマックス帯（85%〜）は無改変。
+//   間隔は縮めず、消えた区間の元の間隔の最大値を採って詰めた。
+// 実測: 生存窓 12f / 最悪 12f / 連鎖 2 /
+//   狭窓密度 0.037 / 抑制率 0.140 / 複合度 0.000 /
+//   D(t) 4.64 @91.1% / タップ 32本 = 0.59/秒（構造上限 1.05）
 // ---------------------------------------------------------------------------
 const STAGE_10: StageDef = {
   id: 10,
   name: 'TEST II',
   speedPxPerFrame: 5,
-  lengthPx: 34297,
+  lengthPx: 16168,
   safeRunwayPx: 240,
   groundY: 148,
   objects: [
@@ -607,85 +548,37 @@ const STAGE_10: StageDef = {
     { t: 'ceil', x: 4389, w: 48, y: 96 },
     { t: 'spike', x: 4693, n: 11 },
     { t: 'block', x: 5044, w: 12, h: 16 },
-    { t: 'fly', x: 5381, alt: 'HIGH', vx: 1 },
-    { t: 'spike', x: 5649, n: 12 },
-    { t: 'ceil', x: 6008, w: 64, y: 96 },
-    { t: 'spike', x: 6328, n: 9 },
-    { t: 'block', x: 6663, w: 12, h: 16 },
-    { t: 'spike', x: 7000, n: 10 },
-    { t: 'plat', x: 7366, y: 112 },
-    { t: 'spike', x: 7741, n: 10 },
-    { t: 'spring', x: 8096 },
-    { t: 'spike', x: 8383, n: 12 },
-    { t: 'fly', x: 8754, alt: 'MID', vx: 1 },
-    { t: 'spike', x: 9022, n: 10 },
-    { t: 'block', x: 9365, w: 12, h: 16 },
-    { t: 'ceil', x: 9702, w: 48, y: 96 },
-    { t: 'spike', x: 10006, n: 11 },
-    { t: 'block', x: 10369, w: 24, h: 32 },
-    { t: 'spike', x: 10755, n: 12 },
-    { t: 'ceil', x: 11114, w: 48, y: 96 },
-    { t: 'spike', x: 11418, n: 13 },
-    { t: 'block', x: 11785, w: 12, h: 16 },
-    { t: 'fly', x: 12122, alt: 'HIGH', vx: 1 },
-    { t: 'spike', x: 12390, n: 14 },
-    { t: 'ceil', x: 12765, w: 64, y: 96 },
-    { t: 'spike', x: 13085, n: 11 },
-    { t: 'block', x: 13436, w: 12, h: 16 },
-    { t: 'spike', x: 13773, n: 12 },
-    { t: 'lift', x: 14155, y: 132, amp: 24, period: 90, phase: 20 },
-    { t: 'spike', x: 14514, n: 11 },
-    { t: 'crumble', x: 14888, y: 116, delay: 10 },
-    { t: 'spike', x: 15255, n: 13 },
-    { t: 'fly', x: 15634, alt: 'MID', vx: 1 },
-    { t: 'spike', x: 15902, n: 11 },
-    { t: 'block', x: 16253, w: 12, h: 16 },
-    { t: 'ceil', x: 16590, w: 48, y: 96 },
-    { t: 'spike', x: 16894, n: 12 },
-    { t: 'block', x: 17265, w: 24, h: 32 },
-    { t: 'spike', x: 17651, n: 13 },
-    { t: 'ceil', x: 18018, w: 48, y: 96 },
-    { t: 'spike', x: 18322, n: 14 },
-    { t: 'block', x: 18697, w: 12, h: 16 },
-    { t: 'fly', x: 19034, alt: 'HIGH', vx: 1 },
-    { t: 'spike', x: 19302, n: 15 },
-    { t: 'ceil', x: 19685, w: 64, y: 96 },
-    { t: 'spike', x: 20005, n: 12 },
-    { t: 'block', x: 20364, w: 12, h: 16 },
-    { t: 'spike', x: 20701, n: 13 },
-    { t: 'plat', x: 21091, y: 104 },
-    { t: 'spike', x: 21466, n: 12 },
-    { t: 'crumble', x: 21848, y: 108, delay: 10 },
-    { t: 'spike', x: 22215, n: 14 },
-    { t: 'fly', x: 22602, alt: 'MID', vx: 1 },
-    { t: 'spike', x: 22870, n: 12 },
-    { t: 'block', x: 23229, w: 12, h: 16 },
-    { t: 'ceil', x: 23566, w: 48, y: 96 },
-    { t: 'spike', x: 23870, n: 13 },
-    { t: 'block', x: 24249, w: 24, h: 32 },
-    { t: 'spike', x: 24635, n: 14 },
-    { t: 'ceil', x: 25010, w: 48, y: 96 },
-    { t: 'spike', x: 25314, n: 15 },
-    { t: 'block', x: 25697, w: 12, h: 16 },
-    { t: 'fly', x: 26034, alt: 'HIGH', vx: 1 },
-    { t: 'spike', x: 26302, n: 16 },
-    { t: 'ceil', x: 26693, w: 64, y: 96 },
-    { t: 'spike', x: 27013, n: 13 },
-    { t: 'block', x: 27380, w: 12, h: 16 },
-    { t: 'spike', x: 27717, n: 14 },
-    { t: 'lift', x: 28115, y: 124, amp: 32, period: 100, phase: 40 },
-    { t: 'spike', x: 28474, n: 13 },
-    { t: 'block', x: 28841, w: 12, h: 16 },
-    { t: 'spike', x: 29178, n: 15 },
-    { t: 'block', x: 29573, w: 24, h: 32 },
-    { t: 'spike', x: 29959, n: 15 },
-    { t: 'block', x: 30342, w: 12, h: 16 },
-    { t: 'ceil', x: 30679, w: 48, y: 96 },
-    { t: 'spike', x: 30987, n: 17 },
-    { t: 'block', x: 31356, w: 12, h: 16 },
-    { t: 'spike', x: 31663, n: 14 },
-    { t: 'block', x: 32008, w: 12, h: 16 },
-    { t: 'spike', x: 32315, n: 12 },
+    { t: 'plat', x: 5381, y: 112 },
+    { t: 'spike', x: 5756, n: 10 },
+    { t: 'spring', x: 6111 },
+    { t: 'fly', x: 6485, alt: 'HIGH', vx: 1 },
+    { t: 'spike', x: 6760, n: 11 },
+    { t: 'lift', x: 7173, y: 132, amp: 24, period: 90, phase: 20 },
+    { t: 'crumble', x: 7532, y: 116, delay: 10 },
+    { t: 'block', x: 7899, w: 12, h: 16 },
+    { t: 'ceil', x: 8236, w: 48, y: 96 },
+    { t: 'spike', x: 8646, n: 13 },
+    { t: 'spike', x: 9093, n: 12 },
+    { t: 'fly', x: 9551, alt: 'HIGH', vx: 1 },
+    { t: 'spike', x: 9819, n: 16 },
+    { t: 'ceil', x: 10210, w: 64, y: 96 },
+    { t: 'spike', x: 10530, n: 13 },
+    { t: 'block', x: 10897, w: 12, h: 16 },
+    { t: 'spike', x: 11234, n: 14 },
+    { t: 'lift', x: 11632, y: 124, amp: 32, period: 100, phase: 40 },
+    { t: 'spike', x: 11991, n: 13 },
+    { t: 'block', x: 12358, w: 12, h: 16 },
+    { t: 'spike', x: 12695, n: 15 },
+    { t: 'block', x: 13090, w: 24, h: 32 },
+    { t: 'spike', x: 13476, n: 15 },
+    // クライマックス帯（到達率 85〜95%）— §15-15 の間引きでも構造を保存した区間
+    { t: 'block', x: 13859, w: 12, h: 16 },
+    { t: 'ceil', x: 14196, w: 48, y: 96 },
+    { t: 'spike', x: 14504, n: 17 },
+    { t: 'block', x: 14873, w: 12, h: 16 },
+    { t: 'spike', x: 15180, n: 14 },
+    { t: 'block', x: 15525, w: 12, h: 16 },
+    { t: 'spike', x: 15832, n: 12 },
   ],
 }
 

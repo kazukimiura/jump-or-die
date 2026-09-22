@@ -205,6 +205,19 @@ export function tightWindowThreshold(windowMinFrames: number): number {
  */
 export const SPIKE_MAX_WIDTH_RATIO = 0.85
 
+/**
+ * 章ごとのステージ長の上限（秒）。**不合格条件**（GDD §15-15）。
+ *
+ * 長さは従属変数ではなく制約である。§8-3 でチェックポイントを置かない理由の3番目に
+ * 「最長でも60秒」と書かれており、それを超えた時点でその前提が壊れる。
+ * 憲法3 は「もう1回」の**意思決定**コストを下げるが**実行**コストは下げない。
+ * 300ms で再開できても、90% 地点で死ねばその長さぶんの再実行が要る。
+ * §9-2 の損失回避は取り戻せる範囲でだけ燃料になり、それを超えると諦めの理由に変わる。
+ */
+export const CHAPTER_MAX_SECONDS: readonly number[] = [40, 55, 60, 65, 70, 75]
+/** S30 のみ例外的に 80 秒 */
+export const FINAL_STAGE_MAX_SECONDS = 80
+
 /** 同一 worldX 区間に重ねてよい着地可能面の数（本線＋迂回の2つまで。§5-3 新設） */
 export const MAX_OVERLAPPING_SURFACES = 2
 /** 同時に起動中になりうる崩落床の数の上限（§5-3 新設） */
@@ -286,3 +299,11 @@ export const CLIMAX_NORM_FRAMES = 42
 
 export const CLIMAX_MIN_RATIO = 0.85
 export const CLIMAX_MAX_RATIO = 0.95
+
+/**
+ * 平均要求タップ/秒の許容幅（設計値に対する比）。
+ * 下限側が**間延びの検出器**で、今回 S8 が 58個/50秒 → 49個/80秒 と
+ * 密度が半分近くに落ちたまま素通りした穴を塞ぐ。
+ */
+export const TAPS_PER_SEC_LO = 0.8
+export const TAPS_PER_SEC_HI = 1.35
