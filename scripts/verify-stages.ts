@@ -12,7 +12,7 @@
  */
 
 import { STAGES, getBudget } from '../src/data/stages'
-import { checkDeterminism, verifyStage } from '../src/lib/game/solver'
+import { checkDeterminism, knowledgeDeaths, verifyStage } from '../src/lib/game/solver'
 import { horizontalReach } from '../src/lib/game/physics'
 import { goalFrame } from '../src/lib/game/stageRuntime'
 import {
@@ -85,6 +85,14 @@ for (const stage of STAGES) {
     )
     console.log(
       `  [9] クライマックス : D(t)max=${s.climaxD.toFixed(2)} @ ${pc(s.climaxAt)}  [帯 85.0〜95.0%${budget.climaxWarnOnly ? ' / S1 は警告のみ' : ''}]`,
+    )
+    console.log(
+      `  [15] 期待死亡回数   : E[D_skill]=${s.expectedDeaths.toFixed(1)}  [目標 ${budget.deathTarget} / 帯 ${(budget.deathTarget * 0.7).toFixed(1)}〜${(budget.deathTarget * 1.6).toFixed(1)}]  ` +
+        `σ感度 ${s.expectedDeathsBySigma.map((e) => `σ=${e.sigma}:${e.value.toFixed(1)}`).join(' / ')}`,
+    )
+    console.log(
+      `       知識由来の死   : D_knowledge=${knowledgeDeaths(stage)}  [上限 ${(budget.deathTarget * 0.1).toFixed(1)} = 目標の1割]  ` +
+        `通しクリア確率 ${(s.clearProbability * 100).toFixed(2)}%`,
     )
     console.log(
       `      推奨ルートの窓 : ${s.route.map((j) => j.window).join(', ')}`,

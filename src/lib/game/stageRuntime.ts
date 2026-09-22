@@ -221,14 +221,30 @@ export function dropY(
   if (stageFrame < fallStartFrame) {
     // 予兆なし（tell === false）の個体は揺れない＝初見殺し。既定は予兆あり
     if (def.tell === false) return def.y
-    // round で **-1 / 0 / +1 の3値**になる。1周期24f の滞在は 6f / 12f / 6f で、
-    // 基準位置に半分とどまるので「パタパタ」ではなく「ゆらぎ」に見える（彩色 映 R18）
-    return Math.round(
-      def.y - DROP_SWAY_AMP + 2 * DROP_SWAY_AMP * triangle(stageFrame / DROP_SWAY_PERIOD),
-    )
+    // **-1 / 0 / +1 の3値**。1周期 24f の滞在は 6f / 12f / 6f で、基準位置に
+    // 半分とどまるから「パタパタ」ではなく「ゆらぎ」に見える（彩色 映 R18）。
+    //
+    // 連続三角波を Math.round した場合の滞在は 5/12/7 と**非対称**になる
+    // （JS の Math.round は -0.5 を 0 に、+0.5 を 1 に丸めるため）。
+    // 指定された 6/12/6 は離散の段として書くのが正確なので、三角波を
+    // 4分割して量子化した形（下 → 中 → 上 → 中）を直接書く。
+    return def.y + dropSwayOffset(stageFrame)
   }
   const k = stageFrame - fallStartFrame
   return Math.min(groundY - DROP_H, Math.round(def.y + (GRAVITY * k * k) / 2))
+}
+
+/**
+ * 予兆の揺れ量（-1 / 0 / +1）。周期 `DROP_SWAY_PERIOD` を4等分した3値の三角波。
+ * 滞在は **下 6f → 中 6f → 上 6f → 中 6f**（＝ -1:6f / 0:12f / +1:6f）。
+ */
+export function dropSwayOffset(stageFrame: number): number {
+  const q = DROP_SWAY_PERIOD / 4
+  const k = ((stageFrame % DROP_SWAY_PERIOD) + DROP_SWAY_PERIOD) % DROP_SWAY_PERIOD
+  if (k < q) return -DROP_SWAY_AMP
+  if (k < 2 * q) return 0
+  if (k < 3 * q) return DROP_SWAY_AMP
+  return 0
 }
 
 /**
