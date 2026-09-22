@@ -22,21 +22,26 @@
 import type { StageBudget, StageDef } from '@/lib/game/types'
 
 /**
- * 検査基準（GDD §6-3 / §16-2 / §16-10）。
+ * 検査基準（GDD §6-3 / §16-2 / §16-10 / §16-11）。
+ *
+ * `deathTarget` は **`D_actual`（プレイヤーが実際に体験する死亡回数）の目標**。
+ * `D_actual = E[D_skill] + D_learn` で、検査するのは `E[D_skill]` がその 5〜50% に
+ * 入るかどうか。**`D_learn` は測るだけでモデル化しない**（3点では式を立てられない）。
+ * S1〜S5 は社長の実測で確定、**S6〜S10 は暫定**（上端がまだ見えていない）。
  * `tightDensity` は章の表の**下限のみ**で判定するのでここでは参考値（上限は撤廃）。
  * `objectCount` / `tapsPerSecond` は**実測の記録**であって設計値ではない（§15-16）。
  */
 export const STAGE_BUDGETS: Record<number, StageBudget> = {
-  1: { objectCount: 21, maxChain: 3, windowMinFrames: 7, windowMaxFrames: 13, climaxAt: 0.89, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.3], compositeRatio: [0, 0.6], tapsPerSecond: 0.66, deathTarget: 5 },
-  2: { objectCount: 22, maxChain: 3, windowMinFrames: 7, windowMaxFrames: 13, climaxAt: 0.88, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.3], compositeRatio: [0, 0.6], tapsPerSecond: 0.66, deathTarget: 8 },
-  3: { objectCount: 28, maxChain: 3, windowMinFrames: 7, windowMaxFrames: 13, climaxAt: 0.9, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.3], compositeRatio: [0, 0.8], tapsPerSecond: 0.71, deathTarget: 12 },
-  4: { objectCount: 38, maxChain: 4, windowMinFrames: 7, windowMaxFrames: 13, climaxAt: 0.87, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.35], compositeRatio: [0, 0.9], tapsPerSecond: 0.66, deathTarget: 18 },
-  5: { objectCount: 38, maxChain: 5, windowMinFrames: 7, windowMaxFrames: 13, climaxAt: 0.9, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.35], compositeRatio: [0, 0.9], tapsPerSecond: 0.78, deathTarget: 25 },
-  6: { objectCount: 35, maxChain: 5, windowMinFrames: 6, windowMaxFrames: 12, climaxAt: 0.91, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.35], compositeRatio: [0, 0.9], tapsPerSecond: 0.56, deathTarget: 35 },
-  7: { objectCount: 36, maxChain: 5, windowMinFrames: 6, windowMaxFrames: 12, climaxAt: 0.87, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.35], compositeRatio: [0, 0.9], tapsPerSecond: 0.59, deathTarget: 45 },
-  8: { objectCount: 36, maxChain: 5, windowMinFrames: 6, windowMaxFrames: 12, climaxAt: 0.89, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.4], compositeRatio: [0, 0.9], tapsPerSecond: 0.64, deathTarget: 60 },
-  9: { objectCount: 36, maxChain: 5, windowMinFrames: 6, windowMaxFrames: 12, climaxAt: 0.86, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.4], compositeRatio: [0, 0.9], tapsPerSecond: 0.60, deathTarget: 80 },
-  10: { objectCount: 45, maxChain: 5, windowMinFrames: 6, windowMaxFrames: 12, climaxAt: 0.88, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.4], compositeRatio: [0, 0.95], tapsPerSecond: 0.70, deathTarget: 110 },
+  1: { objectCount: 21, maxChain: 3, windowMinFrames: 7, windowMaxFrames: 13, climaxAt: 0.89, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.3], compositeRatio: [0, 0.6], tapsPerSecond: 0.66, deathTarget: 2, deathBand: [1, 4], measuredDeaths: 1 },
+  2: { objectCount: 22, maxChain: 3, windowMinFrames: 7, windowMaxFrames: 13, climaxAt: 0.88, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.3], compositeRatio: [0, 0.6], tapsPerSecond: 0.66, deathTarget: 4, deathBand: [2, 8], measuredDeaths: 3 },
+  3: { objectCount: 28, maxChain: 3, windowMinFrames: 7, windowMaxFrames: 13, climaxAt: 0.9, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.3], compositeRatio: [0, 0.8], tapsPerSecond: 0.71, deathTarget: 10, deathBand: [5, 20] },
+  4: { objectCount: 38, maxChain: 4, windowMinFrames: 7, windowMaxFrames: 13, climaxAt: 0.87, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.35], compositeRatio: [0, 0.9], tapsPerSecond: 0.66, deathTarget: 30, deathBand: [20, 45], measuredDeaths: 37 },
+  5: { objectCount: 38, maxChain: 5, windowMinFrames: 7, windowMaxFrames: 13, climaxAt: 0.9, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.35], compositeRatio: [0, 0.9], tapsPerSecond: 0.78, deathTarget: 45, deathBand: [28, 70] },
+  6: { objectCount: 35, maxChain: 5, windowMinFrames: 6, windowMaxFrames: 12, climaxAt: 0.91, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.35], compositeRatio: [0, 0.9], tapsPerSecond: 0.56, deathTarget: 60, deathBand: [37, 93] },
+  7: { objectCount: 36, maxChain: 5, windowMinFrames: 6, windowMaxFrames: 12, climaxAt: 0.87, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.35], compositeRatio: [0, 0.9], tapsPerSecond: 0.59, deathTarget: 75, deathBand: [47, 116] },
+  8: { objectCount: 36, maxChain: 5, windowMinFrames: 6, windowMaxFrames: 12, climaxAt: 0.89, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.4], compositeRatio: [0, 0.9], tapsPerSecond: 0.64, deathTarget: 90, deathBand: [56, 140] },
+  9: { objectCount: 36, maxChain: 5, windowMinFrames: 6, windowMaxFrames: 12, climaxAt: 0.86, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.4], compositeRatio: [0, 0.9], tapsPerSecond: 0.60, deathTarget: 110, deathBand: [68, 171] },
+  10: { objectCount: 45, maxChain: 5, windowMinFrames: 6, windowMaxFrames: 12, climaxAt: 0.88, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.4], compositeRatio: [0, 0.95], tapsPerSecond: 0.70, deathTarget: 140, deathBand: [87, 217] },
 }
 
 // ---------------------------------------------------------------------------

@@ -83,6 +83,24 @@ export function recordTapError(stats: TapStats, errorMs: number): void {
   stats.hist[bin] += 1
 }
 
+/**
+ * σ をタイトルに出すのに必要な最小標本数（GDD §16-11 P1）。
+ * これ未満は `TAP --`。少数の標本で出た値は**技能ではなく偶然**を表示することになる。
+ */
+export const TAP_SIGMA_MIN_SAMPLES = 100
+
+/**
+ * タイトル表示用の σ。**描画は行わない。値を供給するだけ。**
+ *
+ * 到達率は進捗の指標であって技能の指標ではない。
+ * σ は**ステージを進めなくても改善が見える唯一の数字**になる。
+ */
+export function tapSigmaDisplay(stats: TapStats): { ready: boolean; sigmaMs: number | null } {
+  const sd = tapSigmaMs(stats)
+  const ready = stats.n >= TAP_SIGMA_MIN_SAMPLES && sd != null
+  return { ready, sigmaMs: ready ? Math.round(sd as number) : null }
+}
+
 /** 実測 σ [ms]。標本が 2 未満なら null（推測値で上書きしない） */
 export function tapSigmaMs(stats: TapStats): number | null {
   if (stats.n < 2) return null

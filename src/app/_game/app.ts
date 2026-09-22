@@ -69,6 +69,7 @@ import {
   MARKS_KEEP,
   loadSave,
   recordTapError,
+  tapSigmaDisplay,
   stageRecord,
   writeSave,
   type SaveData,
@@ -941,6 +942,15 @@ export function buildRenderState(app: App): RenderState {
         : undefined,
     result: app.phase === 'RESULT' && app.result ? app.result : undefined,
   }
+}
+
+/**
+ * タイトルに出す σ（GDD §16-11 P1）。**描画層への供給口**。
+ * `ready === false`（標本 100 未満）なら `TAP --`、そうでなければ `TAP ±<sigmaMs>MS`。
+ * 文言は文脈 恵、描画は透B。ここは値だけを出す。
+ */
+export function titleSigma(app: App): { ready: boolean; sigmaMs: number | null } {
+  return tapSigmaDisplay(app.save.stats)
 }
 
 /** GameClient が毎フレーム回収する。回収したらキューは空になる */

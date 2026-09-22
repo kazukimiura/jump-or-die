@@ -92,8 +92,8 @@ import {
   PLAYER_HITBOX_H,
   SPEAR_TIP_INSET,
   SPEAR_VIS_W,
-  DEATH_TARGET_HI,
-  DEATH_TARGET_LO,
+  SKILL_SHARE_HI,
+  SKILL_SHARE_LO,
   DROP_CRUMBLE_MIN_SEPARATION,
   DROP_H,
   KNOWLEDGE_DEATH_RATIO,
@@ -2236,22 +2236,23 @@ export function verifyStage(stage: StageDef, budget: StageBudget): VerifyResult 
   // これだけが σ という**人間側の実測量**に接続されている。生存窓・誤帰属距離・D(t)・
   // 狭窓密度は全て企画の想定から導かれていて、指標体系が自己参照になっていた。
   // 旧10本は全ての検査に合格していながら E[D] 合計が約 0.5 回で、社長は無死亡で通した。
-  const edLo = budget.deathTarget * DEATH_TARGET_LO
-  const edHi = budget.deathTarget * DEATH_TARGET_HI
+  const edLo = budget.deathTarget * SKILL_SHARE_LO
+  const edHi = budget.deathTarget * SKILL_SHARE_HI
+  const share = budget.deathTarget > 0 ? solve.expectedDeaths / budget.deathTarget : 0
   const sens = solve.expectedDeathsBySigma
     .map((e) => `σ=${e.sigma}: ${e.value.toFixed(1)}`)
     .join(' / ')
   if (solve.expectedDeaths < edLo) {
     issues.push({
       level: 'FAIL',
-      code: 'EXPECTED_DEATHS',
-      message: `期待死亡回数 E[D_skill]=${solve.expectedDeaths.toFixed(1)} が目標 ${budget.deathTarget} の帯 ${edLo.toFixed(1)}〜${edHi.toFixed(1)} を下回ります（死にゲーになっていない）。[${sens}]`,
+      code: 'SKILL_SHARE',
+      message: `E[D_skill]=${solve.expectedDeaths.toFixed(1)} が D_actual 目標 ${budget.deathTarget} の ${(share * 100).toFixed(1)}% で、下限 ${SKILL_SHARE_LO * 100}%（${edLo.toFixed(1)}）を下回ります。**覚えたら二度と死なない＝リプレイ価値が無い**。[${sens}]`,
     })
   } else if (solve.expectedDeaths > edHi) {
     issues.push({
       level: 'FAIL',
-      code: 'EXPECTED_DEATHS',
-      message: `期待死亡回数 E[D_skill]=${solve.expectedDeaths.toFixed(1)} が目標 ${budget.deathTarget} の帯 ${edLo.toFixed(1)}〜${edHi.toFixed(1)} を上回ります（理不尽）。[${sens}]`,
+      code: 'SKILL_SHARE',
+      message: `E[D_skill]=${solve.expectedDeaths.toFixed(1)} が D_actual 目標 ${budget.deathTarget} の ${(share * 100).toFixed(1)}% で、上限 ${SKILL_SHARE_HI * 100}%（${edHi.toFixed(1)}）を超えます。**覚えたのに運で死ぬ＝憲法2 に反する**。[${sens}]`,
     })
   }
 

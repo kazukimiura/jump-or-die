@@ -13,7 +13,12 @@
 
 import { STAGES, getBudget } from '../src/data/stages'
 import { checkDeterminism, knowledgeDeaths, verifyStage } from '../src/lib/game/solver'
-import { CHAPTER_DEATH_SUM_HI, CHAPTER_DEATH_SUM_LO } from '../src/lib/game/constants'
+import {
+  CHAPTER_DEATH_SUM_HI,
+  CHAPTER_DEATH_SUM_LO,
+  SKILL_SHARE_HI,
+  SKILL_SHARE_LO,
+} from '../src/lib/game/constants'
 import { horizontalReach } from '../src/lib/game/physics'
 import { goalFrame } from '../src/lib/game/stageRuntime'
 import {
@@ -88,12 +93,19 @@ for (const stage of STAGES) {
     console.log(
       `  [9] クライマックス : D(t)max=${s.climaxD.toFixed(2)} @ ${pc(s.climaxAt)}  [帯 85.0〜95.0%${budget.climaxWarnOnly ? ' / S1 は警告のみ' : ''}]`,
     )
+    const share = s.expectedDeaths / budget.deathTarget
     console.log(
-      `  [15] 期待死亡回数   : E[D_skill]=${s.expectedDeaths.toFixed(1)}  [目標 ${budget.deathTarget} / 帯 ${(budget.deathTarget * 0.7).toFixed(1)}〜${(budget.deathTarget * 1.6).toFixed(1)}]  ` +
-        `σ感度 ${s.expectedDeathsBySigma.map((e) => `σ=${e.sigma}:${e.value.toFixed(1)}`).join(' / ')}`,
+      `  [15] E[D_skill]    : ${s.expectedDeaths.toFixed(1)} = D_actual 目標 ${budget.deathTarget} の ${(share * 100).toFixed(1)}%  ` +
+        `[帯 ${SKILL_SHARE_LO * 100}〜${SKILL_SHARE_HI * 100}%]  σ感度 ${s.expectedDeathsBySigma.map((e) => `σ=${e.sigma}:${e.value.toFixed(1)}`).join(' / ')}`,
     )
     console.log(
-      `       知識由来の死   : D_knowledge=${knowledgeDeaths(stage)}  [上限 ${(budget.deathTarget * 0.1).toFixed(1)} = 目標の1割]  ` +
+      `       D_actual 目標  : ${budget.deathTarget}（帯 ${budget.deathBand[0]}〜${budget.deathBand[1]}）` +
+        (budget.measuredDeaths != null
+          ? `  / **実測 ${budget.measuredDeaths}** → D_learn = ${(budget.measuredDeaths - s.expectedDeaths).toFixed(1)}（学習由来 ${(((budget.measuredDeaths - s.expectedDeaths) / budget.measuredDeaths) * 100).toFixed(0)}%）`
+          : '  / 実測なし'),
+    )
+    console.log(
+      `       知識由来の死   : D_knowledge=${knowledgeDeaths(stage)}  [上限 ${(budget.deathTarget * 0.1).toFixed(1)}]  ` +
         `通しクリア確率 ${(s.clearProbability * 100).toFixed(2)}%`,
     )
     console.log(
@@ -161,8 +173,8 @@ sums.forEach((t, i) => {
   const ratio = t.got / t.want
   const ok = ratio >= CHAPTER_DEATH_SUM_LO && ratio <= CHAPTER_DEATH_SUM_HI
   console.log(
-    `  章${i + 1}: ${t.got.toFixed(1)} / 目標 ${t.want}  = ${ratio.toFixed(3)} 倍  ` +
-      `[帯 ${CHAPTER_DEATH_SUM_LO}〜${CHAPTER_DEATH_SUM_HI}] ${ok ? 'OK' : 'NG'}`,
+    `  章${i + 1}: E[D_skill] 合計 ${t.got.toFixed(1)} / D_actual 目標合計 ${t.want}  = ${(ratio * 100).toFixed(1)}%  ` +
+      `[帯 ${CHAPTER_DEATH_SUM_LO * 100}〜${CHAPTER_DEATH_SUM_HI * 100}%] ${ok ? 'OK' : 'NG'}`,
   )
   if (!ok) failed++
 })
