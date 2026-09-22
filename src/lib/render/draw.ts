@@ -491,6 +491,25 @@ export const DROP_WOBBLE_AMP = 1
  * 実行環境による浮動小数の差が入り込まない（憲法2・決定論）。
  *
  * **落下が始まった個体には適用しないこと。** 予兆は役目を終えている。
+ *
+ * ■ `tell`（予兆を出すか）との関係 —— **描画層はこのフラグを受け取らない。**
+ *
+ * `drop` は「落ちるか（`falls`）」と「予兆を出すか（`tell`）」が分離された。
+ * 後半のステージでは `tell = false`（予兆なしで落ちる）が使われる。
+ *
+ * **`tell` を描画層に渡さないことが、「予兆ありと予兆なしが 1 ドットも違わない」ことの
+ * 構造的な保証になっている。** 描画層が知らない情報で絵を変えることはできない。
+ * `tell = false` の個体は、エンジン側で本関数を**呼ばない**（＝ `y` に揺れが乗らない）
+ * というだけで、スプライトも階調も寸法も `tell = true` と完全に同一に描かれる。
+ *
+ * ```ts
+ * // エンジン側
+ * const oy = drop.tell && !drop.falling ? dropWobbleOffset(stageFrame, drop.phase) : 0
+ * const y  = Math.round(drop.baseY + oy)   // ← この 1 個の y を判定にも描画にも使う
+ * ```
+ *
+ * `falls = false && tell = true`（落ちないのに揺れる）は企画側の【P0】で禁止だが、
+ * 描画層は `y` しか見ないので、万一その組み合わせが来ても壊れない（ただ揺れて見えるだけ）。
  */
 export function dropWobbleOffset(stageFrame: number, phase = 0): number {
   const p = DROP_WOBBLE_PERIOD
