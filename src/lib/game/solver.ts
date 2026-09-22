@@ -85,8 +85,8 @@ import {
   SPIKE_MAX_WIDTH_RATIO,
   CHAPTER_TAPS_PER_SEC_BAND,
   CHAPTER_TIGHT_DENSITY_MIN,
+  GATE_B_MAX,
   GATE_B_MIN,
-  GATE_B_WARN,
   TIGHT_UNIT_SHARE_MAX,
   CEIL_H,
   PLAYER_HITBOX_H,
@@ -1950,16 +1950,34 @@ export function staticChecks(stage: StageDef, budget: StageBudget): CheckIssue[]
         message: `GATE の右端が揃っていません (ceil 右端 ${c.x + c.w} / 下段 ${lo.t} 右端 ${lo.x + lw})。出口が1本の垂直線にならないと門が単一の関門として読めない`,
       })
     }
+    // 左端は下段が block / spear のとき一致必須。谷だけは内包可
+    // （谷の幅は跳距離の要求で決まるので天井と揃えられない）
+    if (lo.t !== 'pit' && c.x !== lo.x) {
+      issues.push({
+        level: 'FAIL',
+        code: 'GATE_WELD',
+        message: `GATE の左端が揃っていません (ceil x=${c.x} / 下段 ${lo.t} x=${lo.x})。矩形の開口として読めないと **B の大きさを目で測れない**`,
+      })
+    }
+    if (lo.t === 'pit' && c.x < lo.x) {
+      issues.push({
+        level: 'FAIL',
+        code: 'GATE_WELD',
+        message: `GATE の ceil が谷の左端よりはみ出しています (ceil x=${c.x} / 谷 x=${lo.x})。谷のときは内包のみ可`,
+      })
+    }
     // B は**見た目の隙間ではなく、致死ボックスが収まるべき垂直クリアランス**。
     // 画面上の開口 = 致死ボックス 13px + B（彩色 映 R19 の訂正）。
+    // B は**見た目の隙間ではなく、致死ボックスが収まるべき垂直クリアランス**。
+    // 画面上の開口 = 致死ボックス 13px + B。範囲 3〜12、**例外なし**。
     const b = gateGap(stage, ci, oi)
-    if (b < GATE_B_WARN) {
+    if (b < GATE_B_MIN || b > GATE_B_MAX) {
       issues.push({
-        level: b < GATE_B_MIN ? 'FAIL' : 'WARN',
+        level: 'FAIL',
         code: 'GATE_B',
         message:
-          `GATE の垂直クリアランス B=${b}px（画面上の開口 ${b + PLAYER_HITBOX_H}px）が実用下限 ${GATE_B_WARN}px を下回ります (x=${c.x})。` +
-          `判定外のアンテナ(上2px)とつま先(下1px)の計3px が毎回めり込み、「当たっているのに死なない」に見えて判定への信頼を削る`,
+          `GATE の垂直クリアランス B=${b}px（画面上の開口 ${b + PLAYER_HITBOX_H}px）が範囲 ${GATE_B_MIN}〜${GATE_B_MAX} の外です (x=${c.x})。` +
+          `B<3 は判定外のアンテナ(上2px)とつま先(下1px)の計3px が毎回めり込み、§4-1 の**過少検出**（当たったのに死なない）を毎回起こす`,
       })
     }
   }
