@@ -13,6 +13,7 @@
 
 import { STAGES, getBudget } from '../src/data/stages'
 import { checkDeterminism, knowledgeDeaths, verifyStage } from '../src/lib/game/solver'
+import { CHAPTER_DEATH_SUM_HI, CHAPTER_DEATH_SUM_LO } from '../src/lib/game/constants'
 import { horizontalReach } from '../src/lib/game/physics'
 import { goalFrame } from '../src/lib/game/stageRuntime'
 import {
@@ -27,6 +28,7 @@ const ms = (f: number) => Math.round((f * 1000) / 60)
 const pc = (r: number) => `${(r * 100).toFixed(1)}%`
 
 let failed = 0
+const sums = Array.from({ length: 6 }, () => ({ got: 0, want: 0 }))
 
 console.log('=== JumpOrDie ステージソルバ検査 (GDD §7-4 / §14) ===')
 console.log(
@@ -144,8 +146,27 @@ for (const stage of STAGES) {
     for (const i of r.issues) console.log(`      [${i.level}] ${i.code}: ${i.message}`)
   }
   if (!r.ok) failed++
+  sums[Math.min(5, Math.floor((stage.id - 1) / 5))].got += s.expectedDeaths
+  sums[Math.min(5, Math.floor((stage.id - 1) / 5))].want += budget.deathTarget
   console.log('')
 }
+
+// 検査17: E[D_skill] の**章合計**（GDD §16-10 #5）
+//
+// 各本が個別の帯（0.7〜1.6）に入っていても、**全本が下寄りなら章全体が易しくなる。**
+// 個別検査では原理的に捕まらないので、章単位でも見る。
+console.log('=== 章合計 E[D_skill] ===')
+sums.forEach((t, i) => {
+  if (t.want === 0) return
+  const ratio = t.got / t.want
+  const ok = ratio >= CHAPTER_DEATH_SUM_LO && ratio <= CHAPTER_DEATH_SUM_HI
+  console.log(
+    `  章${i + 1}: ${t.got.toFixed(1)} / 目標 ${t.want}  = ${ratio.toFixed(3)} 倍  ` +
+      `[帯 ${CHAPTER_DEATH_SUM_LO}〜${CHAPTER_DEATH_SUM_HI}] ${ok ? 'OK' : 'NG'}`,
+  )
+  if (!ok) failed++
+})
+console.log('')
 
 if (failed > 0) {
   console.log(`=== 検査 不合格: ${failed} 件 ===`)

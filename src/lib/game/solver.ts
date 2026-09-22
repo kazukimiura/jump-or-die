@@ -84,7 +84,14 @@ import {
   MAX_OVERLAPPING_SURFACES,
   SPIKE_MAX_WIDTH_RATIO,
   CHAPTER_TAPS_PER_SEC_BAND,
-  CHAPTER_TIGHT_DENSITY,
+  CHAPTER_TIGHT_DENSITY_MIN,
+  GATE_B_MIN,
+  GATE_B_WARN,
+  TIGHT_UNIT_SHARE_MAX,
+  CEIL_H,
+  PLAYER_HITBOX_H,
+  SPEAR_TIP_INSET,
+  SPEAR_VIS_W,
   DEATH_TARGET_HI,
   DEATH_TARGET_LO,
   DROP_CRUMBLE_MIN_SEPARATION,
@@ -1311,6 +1318,8 @@ function blockHeightIssues(o: BlockObj): CheckIssue[] {
  */
 function catalogLimits(stage: StageDef): CheckIssue[] {
   const issues: CheckIssue[] = []
+  const pairs = gatePairs(stage)
+  const gateLowers = new Set([...pairs.values()].map((i) => (stage.objects[i] as { x: number }).x))
   const reach = horizontalReach(stage.speedPxPerFrame)
 
   // トゲ床の幅
@@ -1429,6 +1438,102 @@ export function expectedDeaths(
   }
   const clear = Math.exp(logP)
   return { expected: 1 / clear - 1, clearProbability: clear }
+}
+
+/**
+ * `GATE`（門・GDD §16-10）を成す組を返す。
+ *
+ * **新タイプではない。** 同一 X 範囲に「下段の障害物（block / spear / pit）」と
+ * 「上段の `ceil`」を重ねただけのもので、隙間 `B` px が窓を決める。
+ *
+ *   窓[f] = 2*sqrt(B / (G/2))
+ *
+ * **この式に速度が入らない。** 垂直方向の通過条件だけで決まるので、
+ * **全速度域で 1px 刻みに窓を刻める。** 高速域では §6-1 の第2項 `(pw+ow)/v` が
+ * 速度に反比例するため単体の静止障害物は必ず易しくなり、6f を作るには
+ * 「2タップを短時間に要求する複合」しか無く、それは通常誤帰属を生む。
+ * 例外が**要素どうしが X 範囲で密着した「溶接された複合」**で、
+ * これまで WALL+STEP の1種類しか無かった。
+ *
+ * 戻り値は `ceil` の添字 → 下段の添字。
+ */
+export function gatePairs(stage: StageDef): Map<number, number> {
+  const out = new Map<number, number>()
+  stage.objects.forEach((c, ci) => {
+    if (c.t !== 'ceil') return
+    stage.objects.forEach((o, oi) => {
+      if (oi === ci) return
+      const w = o.t === 'block' ? o.w : o.t === 'pit' ? o.w : o.t === 'spear' ? SPEAR_VIS_W : -1
+      if (w < 0) return
+      // X 範囲が重なっていれば門とみなす
+      if (o.x < c.x + c.w && c.x < o.x + w) out.set(ci, oi)
+    })
+  })
+  return out
+}
+
+/** `GATE` の隙間 B[px]（`ceil` 下辺と下段上辺のあいだから、致死ボックス高さを引いた通過幅） */
+/** `ceil` の添字から下段の添字を引く。無ければ -1 */
+export function gateLowerOf(stage: StageDef, ceilIndex: number): number {
+  return gatePairs(stage).get(ceilIndex) ?? -1
+}
+
+export function gateGap(stage: StageDef, ceilIndex: number, lowerIndex: number): number {
+  const c = stage.objects[ceilIndex] as { y: number }
+  const o = stage.objects[lowerIndex]
+  const top =
+    o.t === 'block' ? stage.groundY - o.h
+    : o.t === 'spear' ? stage.groundY - Math.max(0, o.h - SPEAR_TIP_INSET)
+    : stage.groundY
+  return top - (c.y + CEIL_H) - PLAYER_HITBOX_H
+}
+
+/**
+ * 狭窓（生存窓 <= threshold）を**ユニット種別に**数える（GDD §16-10 #3）。
+ *
+ * 難易度の出所が1種類に偏ることを検査するため。`WALL`（h>=56 のブロック）と
+ * `GATE`（`ceil` + 下段）は複合なので、構成要素の型ではなく複合の名前で数える。
+ */
+export function tightUnitKinds(
+  stage: StageDef,
+  route: readonly RouteJump[],
+  threshold: number,
+): Map<string, number> {
+  const gates = gatePairs(stage)
+  const gateMembers = new Set<number>()
+  for (const [c, o] of gates) { gateMembers.add(c); gateMembers.add(o) }
+  // WALL は「踏み台 + 壁」の複合なので、踏み台側を踏んでも WALL として数える
+  const stepOfWall = new Set<number>()
+  stage.objects.forEach((o, i) => {
+    if (o.t !== 'block' || o.h < WALL_MIN_H) return
+    stage.objects.forEach((q, j) => {
+      if (q.t !== 'block' || j === i) return
+      if (q.x + q.w >= o.x - 16 && q.x < o.x) stepOfWall.add(j)
+    })
+  })
+  const kindOf = (i: number): string => {
+    const o = stage.objects[i]
+    if (gateMembers.has(i)) return 'GATE'
+    if (o.t === 'block' && (o.h >= WALL_MIN_H || stepOfWall.has(i))) return 'WALL'
+    return o.t
+  }
+  const out = new Map<string, number>()
+  for (const j of route) {
+    if (j.window > threshold) continue
+    const x0 = playerWorldX(stage, j.frame)
+    const x1 = playerWorldX(stage, j.frame + Math.ceil(JUMP_AIRTIME)) + PLAYER_HITBOX_W
+    let pick = -1
+    stage.objects.forEach((o, i) => {
+      if (!isChallenge(o.t)) return
+      const w = o.t === 'block' ? o.w : o.t === 'pit' ? o.w : o.t === 'spike' ? o.n * SPIKE_UNIT : o.t === 'ceil' ? o.w : 16
+      if (o.x + w < x0 || o.x > x1) return
+      if (pick < 0 || o.x < stage.objects[pick].x) pick = i
+    })
+    if (pick < 0) continue
+    const k = kindOf(pick)
+    out.set(k, (out.get(k) ?? 0) + 1)
+  }
+  return out
 }
 
 /**
@@ -1567,6 +1672,9 @@ function wallChecks(stage: StageDef): CheckIssue[] {
 export function staticChecks(stage: StageDef, budget: StageBudget): CheckIssue[] {
   const issues: CheckIssue[] = []
   const reach = horizontalReach(stage.speedPxPerFrame)
+  const pairs = gatePairs(stage)
+  // GATE の下段になっている槍は、窓が隙間 B で決まるので単体の解析窓は当てない
+  const gateLowers = new Set([...pairs.values()].map((i) => (stage.objects[i] as { x: number }).x))
 
   // 検査8: worldX 昇順（描画カリングの前提）
   for (let i = 1; i < stage.objects.length; i++) {
@@ -1640,6 +1748,8 @@ export function staticChecks(stage: StageDef, budget: StageBudget): CheckIssue[]
     }
     // OB-14 spear（GDD §15-5）
     if (o.t === 'spear') {
+      // GATE の下段になっている槍は、窓が隙間 B で決まるので単体の解析窓は当てない
+      if (gateLowers.has(o.x)) continue
       /*
        * 型上限 54 は「回避不能になる線」（速度に依存しない・社長指示の違反を防ぐ）。
        * **境界の内側を示す線ではなく、境界の外側に打った杭である。**
@@ -1825,6 +1935,35 @@ export function staticChecks(stage: StageDef, budget: StageBudget): CheckIssue[]
     }
   }
 
+  // GATE の溶接条件（GDD §16-10【P0】）
+  for (const [ci, oi] of pairs) {
+    const c = stage.objects[ci] as { x: number; w: number }
+    const lo = stage.objects[oi]
+    const lw = lo.t === 'block' ? lo.w : lo.t === 'pit' ? lo.w : SPEAR_VIS_W
+    // **右端は一致（=）でなければならない**（彩色 映 R19）。
+    // 超えれば「下段を突破した後に ceil で死ぬ経路」が生まれて誤帰属1になり溶接が外れる。
+    // 足りなければ「くぐった後にまだ障害物がある」に見え、門が単一の関門として読めない。
+    if (c.x + c.w !== lo.x + lw) {
+      issues.push({
+        level: 'FAIL',
+        code: 'GATE_WELD',
+        message: `GATE の右端が揃っていません (ceil 右端 ${c.x + c.w} / 下段 ${lo.t} 右端 ${lo.x + lw})。出口が1本の垂直線にならないと門が単一の関門として読めない`,
+      })
+    }
+    // B は**見た目の隙間ではなく、致死ボックスが収まるべき垂直クリアランス**。
+    // 画面上の開口 = 致死ボックス 13px + B（彩色 映 R19 の訂正）。
+    const b = gateGap(stage, ci, oi)
+    if (b < GATE_B_WARN) {
+      issues.push({
+        level: b < GATE_B_MIN ? 'FAIL' : 'WARN',
+        code: 'GATE_B',
+        message:
+          `GATE の垂直クリアランス B=${b}px（画面上の開口 ${b + PLAYER_HITBOX_H}px）が実用下限 ${GATE_B_WARN}px を下回ります (x=${c.x})。` +
+          `判定外のアンテナ(上2px)とつま先(下1px)の計3px が毎回めり込み、「当たっているのに死なない」に見えて判定への信頼を削る`,
+      })
+    }
+  }
+
   issues.push(...wallChecks(stage))
   issues.push(...catalogLimits(stage))
 
@@ -1962,8 +2101,15 @@ export function verifyStage(stage: StageDef, budget: StageBudget): VerifyResult 
       })
     }
   }
-  // 狭窓密度は **章の表**（§16-2）から引く。旧値の3〜7倍。ここが実害の本体だった
-  band(solve.tightDensity, CHAPTER_TIGHT_DENSITY[chapter], 'TIGHT_DENSITY', '狭窓密度', 'FAIL')
+  // 狭窓密度は **章の表の下限のみ**（§16-2 / §16-10 #4 で上限は撤廃）
+  const tdMin = CHAPTER_TIGHT_DENSITY_MIN[chapter]
+  if (solve.tightDensity < tdMin) {
+    issues.push({
+      level: 'FAIL',
+      code: 'TIGHT_DENSITY',
+      message: `狭窓密度 ${solve.tightDensity.toFixed(3)} が章${chapter + 1}の下限 ${tdMin} を下回ります（上限は §16-10 で撤廃）`,
+    })
+  }
   band(solve.suppressRatio, budget.suppressRatio, 'SUPPRESS_RATIO', '抑制率', 'FAIL')
   band(solve.compositeRatio, budget.compositeRatio, 'COMPOSITE_RATIO', '複合度', 'WARN')
 
@@ -2018,6 +2164,27 @@ export function verifyStage(stage: StageDef, budget: StageBudget): VerifyResult 
         `平均要求タップ/秒 ${solve.tapsPerSecond.toFixed(2)} が章${chapter + 1}の帯 ${tpsLo}〜${tpsHi} の下を割ります（実効上限 ${effCeiling.toFixed(2)}）。` +
         `「たまに難所がある、間延びしたステージ」になっている`,
     })
+  }
+
+  // 検査16: 狭窓の出所の多様性（GDD §16-10 #3）
+  // 難易度の出所が1種類に偏ることを**構造として禁じる**。
+  // 記憶に残るステージ像が「壁、壁、壁」になってはならない。
+  // S1 は除外する。「初出は2要素まで」（§16-10）の下で S1 が使える新要素は
+  // `block` と `spear` の2つだけで、**`block` は狭窓を作れない**（単体で最小13f）。
+  // つまり S1 の狭窓の出所は原理的に1種類しか存在しない。
+  // 検査3（生存窓 上限）と検査9（クライマックス）で既に S1 を除外しているのと同じ形。
+  const kinds = tightUnitKinds(stage, solve.route, tightWindowThreshold(budget.windowMinFrames))
+  const tightTotal = [...kinds.values()].reduce((a, b) => a + b, 0)
+  if (tightTotal >= 4 && stage.id !== 1) {
+    for (const [k, n] of kinds) {
+      if (n / tightTotal > TIGHT_UNIT_SHARE_MAX) {
+        issues.push({
+          level: 'FAIL',
+          code: 'TIGHT_UNIT_SHARE',
+          message: `狭窓 ${tightTotal} 本のうち ${k} が ${n} 本（${((n / tightTotal) * 100).toFixed(0)}%）で上限 ${TIGHT_UNIT_SHARE_MAX * 100}% を超えます。難易度の出所が1種類に偏っている`,
+        })
+      }
+    }
   }
 
   // 検査15b: 知識由来の死 D_knowledge（企画 駆の裁定・2026-09-22）
