@@ -161,7 +161,12 @@ function sameFooting(a: SimState, b: SimState): boolean {
 export type RouteJump = {
   /** 何本目のジャンプか（1始まり） */
   index: number
-  /** タップするフレーム（この窓の中で最も安全な位置） */
+  /**
+   * 推奨ルートがタップするフレーム。**実体は生存窓の先頭（`first`）である。**
+   * マキシミン探索が最初に見つかる生存経路を採るため。
+   * どの検査もこの値ではなく `window`（窓の幅）を使うので判定には影響しない。
+   * σ の実測（§16-7）は**窓の中心**を基準にする規定なので、そちらとは別物。
+   */
   frame: number
   /** 生存窓の最初のフレーム */
   first: number
