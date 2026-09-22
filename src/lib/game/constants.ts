@@ -344,3 +344,73 @@ export const CHAPTER_TAPS_PER_SEC_BAND: readonly (readonly [number, number])[] =
  */
 export const MIN_GAP_RATIO_NONLANDABLE = 1.12
 export const MAX_OBJECTS_PER_SECOND = 60 / (MIN_GAP_RATIO_NONLANDABLE * JUMP_AIRTIME)
+
+// == G5 drop / G6 fly 上下動（GDD §16-6・2026-09-22） ========================
+
+/** OB-15 落ちる浮遊物 16x16 */
+export const DROP_W = 16
+export const DROP_H = 16
+/** 予兆の揺れ: y ± 1px・周期 24f の三角波。stageFrame の純関数 */
+export const DROP_SWAY_AMP = 1
+export const DROP_SWAY_PERIOD = 24
+/**
+ * `drop` と `crumble` を同一 worldX 区間に置ける最小距離。
+ * 「踏んで落ちる（crumble）／踏まなくても落ちる（drop）」の混同を避けるため、
+ * ±320px（= 画面幅 1 枚ぶん）以内に共存させない（§16-6）。
+ */
+export const DROP_CRUMBLE_MIN_SEPARATION = 320
+
+/** G6 飛行体の上下動。三角波・`amp = 0` で後方互換 */
+export const FLY_AMP_MIN = 8
+export const FLY_AMP_MAX = 24
+export const FLY_PERIOD_MIN = 30
+export const FLY_PERIOD_MAX = 90
+
+// == 難易度モデル（GDD §16-7・最重要） ======================================
+
+/**
+ * タップ時間精度 σ [ms]。**唯一の外部実測量**。
+ * 社長の実測（10本・約200タップ無失敗、最小窓 11〜17f）から逆算した上界。
+ * 旧根拠の 50〜60ms は過大だった。
+ */
+export const SIGMA_MS = 40
+/** 頑健性の併記に使う3点。プレイヤーの精度差に対する感度を毎回可視化する */
+export const SIGMA_POINTS: readonly number[] = [30, 40, 50]
+
+/**
+ * 期待死亡回数 `E[D]` の許容幅（目標値に対する比）。
+ *
+ * §16-2 は目標死亡回数を単一値（5/8/12/...）で与えているが、`E[D]` は窓幅の指数関数で
+ * 動くため、1フレームの増減で 2 割前後動く。**設計値に張り付かせること自体に意味が無い**ので、
+ * 帯で判定する。下限を割れば「死にゲーになっていない」、上限を超えれば「理不尽」。
+ */
+export const DEATH_TARGET_LO = 0.7
+export const DEATH_TARGET_HI = 1.6
+
+/**
+ * 生存窓の帯（GDD §16-2 が §15-7-4 を置き換える）。
+ * **下限 6〜9f・上限は下限 + 6f。窓はもう難易度カーブを作らない。**
+ * カーブを作るのは狭窓の本数（＝狭窓密度）のほう。
+ */
+export const WINDOW_MAX_MARGIN = 6
+
+/**
+ * 狭窓密度の帯（章ごと・本/秒）。**旧値の3〜7倍。ここが実害の本体だった。**
+ * 旧値（0.00〜0.55）では10本合計の期待死亡回数が約0.5回にしかならず、
+ * 社長が10本を無死亡で通り抜けた。
+ */
+export const CHAPTER_TIGHT_DENSITY: readonly (readonly [number, number])[] = [
+  [0.42, 0.58],
+  [0.34, 0.5],
+  [0.36, 0.52],
+  [0.38, 0.54],
+  [0.4, 0.56],
+  [0.42, 0.6],
+]
+
+/**
+ * 知識由来の死 `D_knowledge` の上限（目標死亡回数に対する比）。
+ * **1割**。「いじわるは味付けであって主菜ではない」（企画 駆）。
+ * 初見でしか効かない死に頼ると、覚えた瞬間に急に簡単になってフローが崩れる。
+ */
+export const KNOWLEDGE_DEATH_RATIO = 0.1

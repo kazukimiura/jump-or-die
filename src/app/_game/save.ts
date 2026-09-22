@@ -40,6 +40,68 @@ export interface StageRecord {
   marks: number[]
 }
 
+/**
+ * タップ精度の要約統計（GDD §16-7【P0】）。
+ *
+ * **これが無いと `E[D]` がまた自己参照に戻る。**
+ * `E[D]` が外部に接続されているのは σ があるからで、その σ が推測のままなら、
+ * 指標体系は再び「企画の想定から導かれた基準で企画の想定を検算する」形に戻る。
+ * 今回の失敗は「測れなかった」のではなく、**測る量を定義していなかった**ことによる。
+ *
+ * 記録するのは **1ジャンプごとの `(実際のタップフレーム − 生存窓の中心)` [ms]** の分布だけ。
+ * 座標列・時刻・入力列は保存しない（個人を推定しうる情報を残さない）。
+ * 平均と分散は Welford 法で逐次更新するので、履歴を持たずに σ が出せる。
+ */
+export interface TapStats {
+  /** 標本数 */
+  n: number
+  /** 誤差の平均 [ms]。早押し傾向なら負に寄る */
+  mean: number
+  /** Welford の M2（= Σ(x-mean)^2）。σ = sqrt(M2/(n-1)) */
+  m2: number
+  /** ヒストグラム 16 ビン。[-120, +120] ms を 15ms 刻みで、両端は外れ値を含む */
+  hist: number[]
+}
+
+/** ヒストグラムのビン数と範囲（±120ms を 16 等分＝15ms 刻み） */
+export const TAP_HIST_BINS = 16
+export const TAP_HIST_RANGE_MS = 120
+
+export function emptyTapStats(): TapStats {
+  return { n: 0, mean: 0, m2: 0, hist: new Array(TAP_HIST_BINS).fill(0) }
+}
+
+/** 1ジャンプぶんの誤差を足し込む（Welford 法・履歴を持たない） */
+export function recordTapError(stats: TapStats, errorMs: number): void {
+  if (!Number.isFinite(errorMs)) return
+  stats.n += 1
+  const d = errorMs - stats.mean
+  stats.mean += d / stats.n
+  stats.m2 += d * (errorMs - stats.mean)
+  const t = (errorMs + TAP_HIST_RANGE_MS) / ((2 * TAP_HIST_RANGE_MS) / TAP_HIST_BINS)
+  const bin = Math.max(0, Math.min(TAP_HIST_BINS - 1, Math.floor(t)))
+  stats.hist[bin] += 1
+}
+
+/** 実測 σ [ms]。標本が 2 未満なら null（推測値で上書きしない） */
+export function tapSigmaMs(stats: TapStats): number | null {
+  if (stats.n < 2) return null
+  return Math.sqrt(stats.m2 / (stats.n - 1))
+}
+
+function parseTapStats(raw: unknown): TapStats {
+  const o = (raw ?? {}) as Record<string, unknown>
+  const hist = Array.isArray(o.hist)
+    ? o.hist.map((v) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.floor(v)) : 0))
+    : []
+  const out = emptyTapStats()
+  out.n = Math.max(0, Math.floor(num(o.n, 0)))
+  out.mean = num(o.mean, 0)
+  out.m2 = Math.max(0, num(o.m2, 0))
+  for (let i = 0; i < TAP_HIST_BINS; i++) out.hist[i] = hist[i] ?? 0
+  return out
+}
+
 export interface SaveData {
   /** スキーマバージョン。移行は `migrate()` が担う */
   v: SaveVersion
@@ -48,6 +110,8 @@ export interface SaveData {
   /** 最後にプレイしたステージ */
   last: number
   opt: { sfx: boolean; reducedFlash: boolean }
+  /** タップ精度の要約統計（GDD §16-7）。σ の実測に使う */
+  stats: TapStats
 }
 
 /** 現行スキーマバージョン（GDD §15-9-3 で v1 → v2 へ移行） */
@@ -77,6 +141,7 @@ export function defaultSave(): SaveData {
     total: { die: 0, playMs: 0 },
     last: 1,
     opt: { sfx: true, reducedFlash: false },
+    stats: emptyTapStats(),
   }
 }
 
@@ -183,6 +248,8 @@ export function loadSave(storage: StorageLike | null): SaveData {
         sfx: bool(rawOpt.sfx, true),
         reducedFlash: bool(rawOpt.reducedFlash, false),
       },
+      // stats は v2 への**追加フィールド**。無ければ空で始める（バージョンは上げない）
+      stats: parseTapStats(raw.stats),
     }
   } catch {
     return fresh

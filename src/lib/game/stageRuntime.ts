@@ -18,7 +18,12 @@ import {
   CRUMBLE_FALL_FRAMES,
   CRUMBLE_H,
   CRUMBLE_W,
+  DROP_H,
+  DROP_SWAY_AMP,
+  DROP_SWAY_PERIOD,
+  DROP_W,
   FLY_ALT_Y,
+  GRAVITY,
   FLY_H,
   FLY_W,
   LIFT_H,
@@ -61,6 +66,7 @@ import {
   startJump,
 } from './physics'
 import type {
+  FlyObj,
   ObjDef,
   ResolvedObj,
   SimState,
@@ -196,6 +202,56 @@ export function liftY(
   return Math.round(anchorY - amp * triangle((stageFrame + phase) / period))
 }
 
+/**
+ * OB-15 落ちる浮遊物の上辺y（GDD §16-6）。`stageFrame` の純関数。
+ *
+ * - `sway = false`: 一切動かない
+ * - `sway = true` かつ落下前: `y ± 1px`・周期 24f の三角波で揺れる（唯一の予兆）
+ * - `sway = true` かつ落下後: プレイヤーと同一の `GRAVITY` で自由落下。
+ *   台形則を静止から k フレーム積分した閉じた解は `dy = G·k²/2`。
+ *   地面に着いたらそこで止まる（＝地上を塞ぐ）。
+ */
+export function dropY(
+  def: { y: number; falls: boolean; tell?: boolean },
+  fallStartFrame: number,
+  groundY: number,
+  stageFrame: number,
+): number {
+  if (!def.falls) return def.y
+  if (stageFrame < fallStartFrame) {
+    // 予兆なし（tell === false）の個体は揺れない＝初見殺し。既定は予兆あり
+    if (def.tell === false) return def.y
+    // round で **-1 / 0 / +1 の3値**になる。1周期24f の滞在は 6f / 12f / 6f で、
+    // 基準位置に半分とどまるので「パタパタ」ではなく「ゆらぎ」に見える（彩色 映 R18）
+    return Math.round(
+      def.y - DROP_SWAY_AMP + 2 * DROP_SWAY_AMP * triangle(stageFrame / DROP_SWAY_PERIOD),
+    )
+  }
+  const k = stageFrame - fallStartFrame
+  return Math.min(groundY - DROP_H, Math.round(def.y + (GRAVITY * k * k) / 2))
+}
+
+/**
+ * `drop` の落下開始フレーム。**cameraX のみを参照する**（§16-6 / 憲法2）。
+ * `cameraX = stageFrame x 速度 >= triggerX` となる最初のフレーム。
+ */
+export function dropFallStart(stage: StageDef, def: { triggerX: number }): number {
+  if (def.triggerX < 0) return Infinity
+  return Math.ceil(def.triggerX / stage.speedPxPerFrame)
+}
+
+/**
+ * OB-08 飛行体の高度（G6・GDD §16-6）。`amp = 0` で従来どおりの水平直線。
+ * 波形は三角波。`stageFrame` の純関数。
+ */
+export function flyY(def: FlyObj, stageFrame: number): number {
+  const base = FLY_ALT_Y[def.alt]
+  const amp = def.amp ?? 0
+  const period = def.period ?? 0
+  if (amp === 0 || period <= 0) return base
+  return Math.round(base - amp * triangle((stageFrame + (def.phase ?? 0)) / period))
+}
+
 /** OB-08 飛行体のワールドX（GDD §5-4 の式を world 座標に展開したもの） */
 export function flyWorldX(
   anchorX: number,
@@ -295,6 +351,11 @@ function resolveStatic(
         lethal: up && hitH > 0,
       }
     }
+    case 'drop': {
+      // トリガーは cameraX のみ。プレイヤーの位置・状態を一切参照しない（§16-6【P0】）
+      const y = dropY(def, dropFallStart(stage, def), g, stageFrame)
+      return { ...base, x: def.x, y, w: DROP_W, h: DROP_H, landable: false, lethal: true }
+    }
     case 'spring':
       return {
         ...base,
@@ -366,7 +427,7 @@ export function resolveObjectsInRange(
       def: fl.def,
       kind: 'fly',
       x,
-      y: FLY_ALT_Y[fl.def.alt],
+      y: flyY(fl.def, stageFrame),
       w: FLY_W,
       h: FLY_H,
       landable: false,

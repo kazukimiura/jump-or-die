@@ -84,6 +84,21 @@ import {
   MAX_OVERLAPPING_SURFACES,
   SPIKE_MAX_WIDTH_RATIO,
   CHAPTER_TAPS_PER_SEC_BAND,
+  CHAPTER_TIGHT_DENSITY,
+  DEATH_TARGET_HI,
+  DEATH_TARGET_LO,
+  DROP_CRUMBLE_MIN_SEPARATION,
+  DROP_H,
+  KNOWLEDGE_DEATH_RATIO,
+  DROP_W,
+  FLY_ALT_Y,
+  FLY_AMP_MAX,
+  FLY_AMP_MIN,
+  FLY_PERIOD_MAX,
+  FLY_PERIOD_MIN,
+  SIGMA_MS,
+  SIGMA_POINTS,
+  WINDOW_MAX_MARGIN,
   CHAPTER_SUPPRESS_MAX,
   MAX_OBJECTS_PER_SECOND,
   tightWindowThreshold,
@@ -228,6 +243,15 @@ export type SolveResult = {
   compositeRatio: number
   /** 平均要求タップ/秒（GDD §6-3 の列）。推奨ルートのタップ数 / ステージ長(秒) */
   tapsPerSecond: number
+  /**
+   * 期待死亡回数 `E[D] = 1/Π(1-p_i) - 1`（σ = SIGMA_MS 基準・GDD §16-7）。
+   * **唯一、外部の実測量（σ）に接続された指標。** ほかは全て企画の想定から導かれている。
+   */
+  expectedDeaths: number
+  /** σ = 30 / 40 / 50 ms の3点。プレイヤーの精度差に対する頑健性を可視化する */
+  expectedDeathsBySigma: readonly { sigma: number; value: number }[]
+  /** 通しクリア確率 Π(1-p_i)（σ = SIGMA_MS） */
+  clearProbability: number
   /** ステージ長（秒） */
   seconds: number
   /** 区間難度 D(t) の最大値 */
@@ -787,6 +811,9 @@ function onIntendedSide(o: ResolvedObj, playerY: number, groundY: number): boole
     case 'crumble':
     case 'swing':
     case 'spear':
+    // `drop` も地上型（GDD §16-6 / §14-13-2）。落ちる個体は毎フレーム位置が変わるので、
+    // 「越えたか」はそのフレームの実位置で解く（§14-13-2 の統一原理）
+    case 'drop':
       return lethalBottom(playerY) <= r.y
     /*
      * 穴に沈んでいない。
@@ -1053,6 +1080,9 @@ export function solveStage(stage: StageDef, windowMinFrames = 10): SolveResult {
     suppressRatio: 0,
     compositeRatio: 0,
     tapsPerSecond: 0,
+    expectedDeaths: 0,
+    expectedDeathsBySigma: SIGMA_POINTS.map((sigma) => ({ sigma, value: 0 })),
+    clearProbability: 1,
     seconds: 0,
     climaxD: 0,
     climaxAt: 0,
@@ -1095,6 +1125,9 @@ export function solveStage(stage: StageDef, windowMinFrames = 10): SolveResult {
   const climax = climaxOf(stage, mm.route, goalFrame(stage))
   const metrics = stageMetrics(stage, mm.route, windowMinFrames)
   const seconds = stage.lengthPx / stage.speedPxPerFrame / 60
+  // 推奨ルート上の全タップの生存窓。これがそのまま E[D] の入力になる
+  const routeWindows = mm.route.map((r) => r.window)
+  const ed = expectedDeaths(routeWindows, SIGMA_MS)
 
   return {
     feasible: true,
@@ -1116,6 +1149,13 @@ export function solveStage(stage: StageDef, windowMinFrames = 10): SolveResult {
     suppressRatio: metrics.suppressRatio,
     compositeRatio: metrics.compositeRatio,
     tapsPerSecond: seconds > 0 ? mm.route.length / seconds : 0,
+    // E[D]: 推奨ルート上の全タップの生存窓の積。新しい探索は不要（§16-7）
+    expectedDeaths: ed.expected,
+    clearProbability: ed.clearProbability,
+    expectedDeathsBySigma: SIGMA_POINTS.map((sigma) => ({
+      sigma,
+      value: expectedDeaths(routeWindows, sigma).expected,
+    })),
     seconds,
     climaxD: climax.d,
     climaxAt: climax.at,
@@ -1146,10 +1186,11 @@ function stageMetrics(
   const tightDensity = seconds > 0 ? tight / seconds : 0
 
   // 抑制率: 「跳んではいけない障害物」の数 / 全挑戦オブジェクト数
-  // 跳んではいけないもの = 天井（くぐる）と MID 高度の飛行体（立ったまま通す）
+  // 跳んではいけないもの = 天井（くぐる）/ MID 高度の飛行体（立ったまま通す）/
+  // 落ちない drop（その高さが塞がるので**下を通る**・§16-6）
   const challenges = stage.objects.filter((o) => isChallenge(o.t))
   const suppress = challenges.filter(
-    (o) => o.t === 'ceil' || (o.t === 'fly' && o.alt === 'MID'),
+    (o) => o.t === 'ceil' || (o.t === 'fly' && o.alt === 'MID') || (o.t === 'drop' && !o.falls),
   ).length
   const suppressRatio = challenges.length > 0 ? suppress / challenges.length : 0
 
@@ -1158,7 +1199,15 @@ function stageMetrics(
   // 該当区間は「動体・天井を含む障害物が 2.0 秒窓の中に 2 つ以上ある」範囲とする
   const span = stage.speedPxPerFrame * 60 * 2.0
   const marks = challenges
-    .filter((o) => o.t === 'ceil' || o.t === 'fly' || o.t === 'lift' || o.t === 'swing' || o.t === 'spear')
+    .filter(
+      (o) =>
+        o.t === 'ceil' ||
+        o.t === 'fly' ||
+        o.t === 'lift' ||
+        o.t === 'swing' ||
+        o.t === 'spear' ||
+        o.t === 'drop',
+    )
     .map((o) => o.x)
     .sort((a, b) => a - b)
   let covered = 0
@@ -1325,6 +1374,71 @@ function catalogLimits(stage: StageDef): CheckIssue[] {
   }
 
   return issues
+}
+
+/**
+ * 標準正規分布の累積分布関数 Φ。Abramowitz & Stegun 26.2.17（誤差 < 7.5e-8）。
+ * `E[D]` の算出にしか使わないので、この精度で足りる。
+ */
+export function phi(z: number): number {
+  const sign = z < 0 ? -1 : 1
+  const x = Math.abs(z) / Math.SQRT2
+  const t = 1 / (1 + 0.3275911 * x)
+  const y =
+    1 -
+    ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) *
+      t *
+      Math.exp(-x * x)
+  return 0.5 * (1 + sign * y)
+}
+
+/**
+ * 生存窓 W[frames] の 1 タップ失敗確率。`p = 2(1 - Φ(W / 2σ))`（GDD §16-1）。
+ *
+ * タップ時刻の誤差が平均0・標準偏差 σ の正規分布に従い、窓の中心を狙うと仮定する。
+ * 窓の外に出れば死ぬので、両側の裾を足して 2 倍している。
+ */
+export function tapFailProbability(windowFrames: number, sigmaMs: number): number {
+  const wMs = (windowFrames / 60) * 1000
+  return Math.max(0, Math.min(1, 2 * (1 - phi(wMs / (2 * sigmaMs)))))
+}
+
+/**
+ * 期待死亡回数 `E[D] = 1/Π(1-p_i) - 1`（GDD §16-7）。
+ *
+ * **新しい探索は要らない。** ソルバは既に推奨ルート上の全タップの生存窓を持っているので、
+ * 積を取るだけで出る。**これが唯一、人間側の実測量（σ）に接続された指標**であり、
+ * 旧設計の「10本すべて無死亡クリア」を事前に検出できた唯一の検査でもある
+ * （旧10本の E[D] 合計は約 0.5 回だった）。
+ */
+export function expectedDeaths(
+  windows: readonly number[],
+  sigmaMs: number,
+): { expected: number; clearProbability: number } {
+  let logP = 0
+  for (const w of windows) {
+    const p = tapFailProbability(w, sigmaMs)
+    // p = 1 なら通しクリア確率 0。E[D] は発散するので有限の巨大値で打ち切る
+    if (p >= 1) return { expected: Infinity, clearProbability: 0 }
+    logP += Math.log(1 - p)
+  }
+  const clear = Math.exp(logP)
+  return { expected: 1 / clear - 1, clearProbability: clear }
+}
+
+/**
+ * 知識由来の死 `D_knowledge`。**初見でのみ発生し、2周目以降は起きない死の本数。**
+ *
+ * σ（タップ精度）に由来しないので、σ ベースの `E[D_skill]` では原理的に捉えられない。
+ * 混ぜると何を測っているか分からなくなるため、**別枠で数える**。
+ *
+ * 現時点の該当は「予兆なし `drop`」だけ。一般則は
+ * **「初見でのみ観測不能」は許可 / 「何周しても観測不能」は禁止**で、
+ * 前者は死因が「覚えていなかった」でプレイヤーに帰属＝初見殺し、
+ * 後者は「観測できなかった」で設計に帰属＝理不尽。憲法2 が禁じているのは後者だけ。
+ */
+export function knowledgeDeaths(stage: StageDef): number {
+  return stage.objects.filter((o) => o.t === 'drop' && o.falls && o.tell === false).length
 }
 
 /**
@@ -1575,8 +1689,92 @@ export function staticChecks(stage: StageDef, budget: StageBudget): CheckIssue[]
         })
       }
     }
+    // OB-15 drop（G5・GDD §16-6）
+    if (o.t === 'drop') {
+      if (o.y < 16 || o.y + DROP_H > stage.groundY) {
+        issues.push({
+          level: 'FAIL',
+          code: 'DROP_Y',
+          message: `drop の y=${o.y} が画面内に収まりません (x=${o.x})。16 〜 ${stage.groundY - DROP_H} の範囲`,
+        })
+      }
+      if (o.falls && o.triggerX < 0) {
+        issues.push({
+          level: 'FAIL',
+          code: 'DROP_TRIGGER',
+          message: `落ちる drop (falls=true) に triggerX がありません (x=${o.x})。トリガーは cameraX のみを参照する`,
+        })
+      }
+      if (!o.falls && o.triggerX >= 0) {
+        issues.push({
+          level: 'WARN',
+          code: 'DROP_TRIGGER',
+          message: `落ちない drop (falls=false) に triggerX が設定されています (x=${o.x})。無視されるので -1 にすること`,
+        })
+      }
+      // 落下は自分の真下だけを塞ぐ。落ちる先が谷だと「落ちたのに通れる」ことになり、
+      // 上下どちらを通るかの選択（G5 の本体）が成立しない
+      if (o.falls) {
+        const overPit = stage.objects.some(
+          (q) => q.t === 'pit' && q.x < o.x + DROP_W && o.x < q.x + q.w,
+        )
+        if (overPit) {
+          issues.push({
+            level: 'FAIL',
+            code: 'DROP_OVER_PIT',
+            message: `落ちる drop が谷の上にあります (x=${o.x})。落下しても地上が塞がらず、上下の選択が成立しない`,
+          })
+        }
+      }
+      // 落ちないのに揺れる個体は**禁止**。1つ置けば予兆が信用されなくなり、
+      // 前半の学習がその1個で無効になる（企画 駆の裁定）
+      if (!o.falls && o.tell === true) {
+        issues.push({
+          level: 'FAIL',
+          code: 'DROP_FAKE_TELL',
+          message: `落ちない drop に予兆 tell=true が付いています (x=${o.x})。揺れて落ちない個体を1つ置けば予兆が信用されなくなり、それまでの学習が無効になる`,
+        })
+      }
+      // crumble（踏んでから落ちる）と drop（踏まなくても落ちる）を近くに置かない（§16-6）
+      const near = stage.objects.find(
+        (q) => q.t === 'crumble' && Math.abs(q.x - o.x) < DROP_CRUMBLE_MIN_SEPARATION,
+      )
+      if (near) {
+        issues.push({
+          level: 'FAIL',
+          code: 'DROP_CRUMBLE_MIX',
+          message: `drop (x=${o.x}) と crumble (x=${(near as { x: number }).x}) が ${DROP_CRUMBLE_MIN_SEPARATION}px 以内にあります。「踏んで落ちる／踏まなくても落ちる」が混同される`,
+        })
+      }
+    }
     // OB-08 fly の速度域と先読み猶予（GDD §15-4 F1/F2）
     if (o.t === 'fly') {
+      // G6 上下動（§16-6）。amp=0 で後方互換なので、amp>0 のときだけ範囲を見る
+      const amp = o.amp ?? 0
+      if (amp !== 0 && (amp < FLY_AMP_MIN || amp > FLY_AMP_MAX)) {
+        issues.push({
+          level: 'FAIL',
+          code: 'FLY_AMP',
+          message: `飛行体の amp=${amp} が範囲 ${FLY_AMP_MIN}〜${FLY_AMP_MAX} の外です (x=${o.x})`,
+        })
+      }
+      if (amp > 0) {
+        const period = o.period ?? 0
+        if (period < FLY_PERIOD_MIN || period > FLY_PERIOD_MAX) {
+          issues.push({
+            level: 'FAIL',
+            code: 'FLY_PERIOD',
+            message: `上下動する飛行体の period=${period} が範囲 ${FLY_PERIOD_MIN}〜${FLY_PERIOD_MAX} の外です (x=${o.x})`,
+          })
+        }
+        if (FLY_ALT_Y[o.alt] - amp < 16) {
+          issues.push({
+            level: 'FAIL',
+            code: 'FLY_AMP',
+            message: `上下動する飛行体が画面上端を突き抜けます (x=${o.x})。alt=${o.alt} (y=${FLY_ALT_Y[o.alt]}) に amp=${amp} は過大`,
+          })
+        }
+      }
       if (o.vx < FLY_VX_MIN || o.vx > FLY_VX_MAX) {
         issues.push({
           level: 'FAIL',
@@ -1724,6 +1922,7 @@ export function verifyStage(stage: StageDef, budget: StageBudget): VerifyResult 
   }
 
   // 検査7: チェイン長・息継ぎ
+  const chapter = Math.min(CHAPTER_MAX_SECONDS.length - 1, Math.floor((stage.id - 1) / 5))
   const chainLimit = Math.min(CHAIN_MAX_GLOBAL, budget.maxChain)
   if (solve.maxChain > chainLimit) {
     issues.push({
@@ -1758,7 +1957,8 @@ export function verifyStage(stage: StageDef, budget: StageBudget): VerifyResult 
       })
     }
   }
-  band(solve.tightDensity, budget.tightDensity, 'TIGHT_DENSITY', '狭窓密度', 'FAIL')
+  // 狭窓密度は **章の表**（§16-2）から引く。旧値の3〜7倍。ここが実害の本体だった
+  band(solve.tightDensity, CHAPTER_TIGHT_DENSITY[chapter], 'TIGHT_DENSITY', '狭窓密度', 'FAIL')
   band(solve.suppressRatio, budget.suppressRatio, 'SUPPRESS_RATIO', '抑制率', 'FAIL')
   band(solve.compositeRatio, budget.compositeRatio, 'COMPOSITE_RATIO', '複合度', 'WARN')
 
@@ -1777,7 +1977,6 @@ export function verifyStage(stage: StageDef, budget: StageBudget): VerifyResult 
   }
 
   // 検査13: ステージ長の上限（章ごと・GDD §15-15）
-  const chapter = Math.min(CHAPTER_MAX_SECONDS.length - 1, Math.floor((stage.id - 1) / 5))
   const maxSecs = stage.id === 30 ? FINAL_STAGE_MAX_SECONDS : CHAPTER_MAX_SECONDS[chapter]
   if (solve.seconds > maxSecs) {
     issues.push({
@@ -1813,6 +2012,56 @@ export function verifyStage(stage: StageDef, budget: StageBudget): VerifyResult 
       message:
         `平均要求タップ/秒 ${solve.tapsPerSecond.toFixed(2)} が章${chapter + 1}の帯 ${tpsLo}〜${tpsHi} の下を割ります（実効上限 ${effCeiling.toFixed(2)}）。` +
         `「たまに難所がある、間延びしたステージ」になっている`,
+    })
+  }
+
+  // 検査15b: 知識由来の死 D_knowledge（企画 駆の裁定・2026-09-22）
+  //
+  // `E[D] = E[D_skill] + D_knowledge` に分解する。`D_knowledge` は**初見でのみ**発生し、
+  // 繰り返し挑戦の難易度を一切作らない。ここに頼ると覚えた瞬間に急に簡単になり、
+  // フローが崩れる。**上限は目標死亡回数の1割**＝「いじわるは味付けであって主菜ではない」。
+  // 内訳が分かれること自体に価値がある —— **どちらが足りないのかが分かる**。
+  const dKnowledge = knowledgeDeaths(stage)
+  const dkMax = budget.deathTarget * KNOWLEDGE_DEATH_RATIO
+  if (dKnowledge > dkMax) {
+    issues.push({
+      level: 'FAIL',
+      code: 'KNOWLEDGE_DEATHS',
+      message: `知識由来の死 D_knowledge=${dKnowledge} が上限 ${dkMax.toFixed(1)}（目標 ${budget.deathTarget} の1割）を超えます。初見でしか効かない死に頼ると、覚えた瞬間に急に簡単になる`,
+    })
+  }
+  // 予兆なし drop があるステージは、区間層の予告（warn）を省略できない。
+  // warn を外すと「そのステージに drop があること自体」が隠れ、
+  // 「何周しても観測不能」＝理不尽の側に落ちる
+  if (dKnowledge > 0 && !stage.objects.some((o) => o.t === 'warn')) {
+    issues.push({
+      level: 'FAIL',
+      code: 'NO_TELL_NEEDS_WARN',
+      message: `予兆なし drop があるのに予告マーカー（warn）がありません。個体層（揺れ）は外せても区間層（warn）は外せない`,
+    })
+  }
+
+  // 検査15: 期待死亡回数 E[D_skill]（GDD §16-7）**本章の最重要成果物**
+  //
+  // これだけが σ という**人間側の実測量**に接続されている。生存窓・誤帰属距離・D(t)・
+  // 狭窓密度は全て企画の想定から導かれていて、指標体系が自己参照になっていた。
+  // 旧10本は全ての検査に合格していながら E[D] 合計が約 0.5 回で、社長は無死亡で通した。
+  const edLo = budget.deathTarget * DEATH_TARGET_LO
+  const edHi = budget.deathTarget * DEATH_TARGET_HI
+  const sens = solve.expectedDeathsBySigma
+    .map((e) => `σ=${e.sigma}: ${e.value.toFixed(1)}`)
+    .join(' / ')
+  if (solve.expectedDeaths < edLo) {
+    issues.push({
+      level: 'FAIL',
+      code: 'EXPECTED_DEATHS',
+      message: `期待死亡回数 E[D_skill]=${solve.expectedDeaths.toFixed(1)} が目標 ${budget.deathTarget} の帯 ${edLo.toFixed(1)}〜${edHi.toFixed(1)} を下回ります（死にゲーになっていない）。[${sens}]`,
+    })
+  } else if (solve.expectedDeaths > edHi) {
+    issues.push({
+      level: 'FAIL',
+      code: 'EXPECTED_DEATHS',
+      message: `期待死亡回数 E[D_skill]=${solve.expectedDeaths.toFixed(1)} が目標 ${budget.deathTarget} の帯 ${edLo.toFixed(1)}〜${edHi.toFixed(1)} を上回ります（理不尽）。[${sens}]`,
     })
   }
 

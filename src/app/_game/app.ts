@@ -68,6 +68,7 @@ import {
   MERCY_DEATHS,
   MARKS_KEEP,
   loadSave,
+  recordTapError,
   stageRecord,
   writeSave,
   type SaveData,
@@ -334,10 +335,14 @@ function stepPlay(app: App): void {
   const tap = app.simTap
   app.simTap = false
   const wasGrounded = app.sim.player.state === 'GROUNDED'
+  const jumpFrame = app.sim.stageFrame
 
   stepSim(app.stage, app.sim, tap)
 
-  if (tap && app.sim.player.state === 'RISING') app.sfx.push('JUMP')
+  if (tap && app.sim.player.state === 'RISING') {
+    app.sfx.push('JUMP')
+    recordJumpAccuracy(app, jumpFrame)
+  }
   if (!wasGrounded && app.sim.player.state === 'GROUNDED') app.sfx.push('LAND')
 
   if (app.sim.dead) {
@@ -345,6 +350,32 @@ function stepPlay(app: App): void {
     return
   }
   if (app.sim.cleared) enterResult(app)
+}
+
+/**
+ * σ の実測（GDD §16-7【P0】）。
+ *
+ * 発火したジャンプ 1 本につき `(タップフレーム − 生存窓の中心)` を ms で記録する。
+ * 窓はソルバが生成した `stage.tapWindows`（推奨ルート）から、**中心が最も近いもの**を選ぶ。
+ * 推奨ルートから外れた経路を通っているプレイヤーでは近似になるが、
+ * σ は「狙った時刻からのばらつき」であって窓の同定精度ではないので、これで足りる。
+ *
+ * 60f（= 1 秒）以上ずれたタップは、対応する窓が無い（＝推奨ルート外の余計なジャンプ）と
+ * みなして捨てる。**外れ値で σ を膨らませない。**
+ *
+ * localStorage への書き込みはここでは行わない（毎フレームの同期書き込みは憲法4 違反）。
+ * ステージ終了時のセーブでまとめて出る。
+ */
+function recordJumpAccuracy(app: App, frame: number): void {
+  const windows = app.stage.tapWindows
+  if (!windows || windows.length === 0) return
+  let best = Infinity
+  for (const [first, last] of windows) {
+    const d = frame - (first + last) / 2
+    if (Math.abs(d) < Math.abs(best)) best = d
+  }
+  if (!Number.isFinite(best) || Math.abs(best) > 60) return
+  recordTapError(app.save.stats, (best / 60) * 1000)
 }
 
 function stepDeath(app: App): void {
@@ -701,7 +732,10 @@ function renderKindOf(o: ResolvedObj): RenderObstacleKind | null {
       return 'PLATFORM'
     case 'lift':
       return 'LIFTER'
-    // 地上を走る LOW はネズミ、空を飛ぶ MID/HIGH は鳥（データは同一・見た目だけ分ける）
+    // 描き分けは **`alt` 基準のまま**（彩色 映 R18 の確定事項）。
+    // 上下動は片側 `y = alt - amp*tri()` なので **`alt` はその個体の最下点**であり、
+    // `alt = LOW` = 最下点で地面に接する = 地を走る、は `amp` の値に依らず成立する。
+    // `alt=LOW, amp=8` は「跳ねるネズミ」として正しい（`amp` 基準にすると破綻する）
     case 'fly':
       return o.def.t === 'fly' && o.def.alt === 'LOW' ? 'MOUSE' : 'FLYER'
     case 'crumble':
@@ -712,6 +746,8 @@ function renderKindOf(o: ResolvedObj): RenderObstacleKind | null {
       return 'SWING'
     case 'spear':
       return 'SPEAR'
+    case 'drop':
+      return 'DROP'
     // 谷は地形として stage.pits で描く。予告マーカーは判定も描画も持たない
     case 'pit':
     case 'warn':
