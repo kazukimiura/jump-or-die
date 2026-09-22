@@ -6,51 +6,53 @@
  * 通しクリア確率 `P = Π(1-p_i)` を一度も計算しなかったことによる。σ=40ms で
  * 旧設計を計算し直すと 10本合計の期待死亡回数は約0.5回で、**実測0回は設計どおり**だった。
  *
- * 【本データの設計原理】
+ * 【設計原理】
  *  - 難易度カーブを作るのは**窓ではなく狭窓の本数**。窓は 6〜9f でほぼ一定に保つ。
- *  - 各ステージの `E[D_skill]` を目標死亡回数の帯に入れる（不合格条件・§16-7）。
- *  - **1ステージ = 1新要素、S1 から投入**（§16-5）。章＝ギミック導入の単位という扱いは破棄。
+ *  - 各ステージの `E[D_skill]` を目標死亡回数の帯（0.7〜1.6倍）に入れる。章合計も 0.85〜1.35倍。
+ *  - **1ステージ = 1新要素、S1 から投入**（初出は2要素まで・§16-10）。
+ *  - **狭窓の出所は同一ユニット種 50% 以下**。記憶に残る像が「壁、壁、壁」になってはならない。
  *
- * 【誤帰属0 が使えるユニットを限定した】
- * 実測の結果、次の形は**構造的に誤帰属1以上を生む**ので一切使っていない:
+ * 【誤帰属0 のために使わなかった形（実測で棄却）】
  *   - ブロックの階段（踏み外して落ちる間に他のブロックを「突破」する）
- *   - 天井 → 槍 の密接した複合（天井をくぐった後に槍で死ぬ）
+ *   - 天井 → 槍 を**離して**置いた複合（天井をくぐった後に槍で死ぬ）
  *   - **踏み台を離した WALL**（踏み台に乗った後に WALL で死ぬ）
- * WALL は**踏み台を密着させれば誤帰属0**になる（実測）。本データはすべてその形。
+ * 溶接（X範囲を密着させる）すれば誤帰属0になる。WALL は踏み台を 8px で密着させ、
+ * `GATE` は `ceil` と下段の左右端を揃えてある。
  */
 import type { StageBudget, StageDef } from '@/lib/game/types'
 
 /**
- * 検査基準（GDD §6-3 / §16-2）。
- * `tightDensity` は章の表（CHAPTER_TIGHT_DENSITY）で判定するのでここでは参考値。
+ * 検査基準（GDD §6-3 / §16-2 / §16-10）。
+ * `tightDensity` は章の表の**下限のみ**で判定するのでここでは参考値（上限は撤廃）。
  * `objectCount` / `tapsPerSecond` は**実測の記録**であって設計値ではない（§15-16）。
  */
 export const STAGE_BUDGETS: Record<number, StageBudget> = {
-  1: { objectCount: 19, maxChain: 3, windowMinFrames: 7, windowMaxFrames: 13, climaxAt: 0.85, climaxWarnOnly: false, tightDensity: [0, 1], suppressRatio: [0, 0.25], compositeRatio: [0, 0.35], tapsPerSecond: 0.66, deathTarget: 5 },
-  2: { objectCount: 22, maxChain: 3, windowMinFrames: 7, windowMaxFrames: 13, climaxAt: 0.86, climaxWarnOnly: false, tightDensity: [0, 1], suppressRatio: [0, 0.25], compositeRatio: [0, 0.35], tapsPerSecond: 0.62, deathTarget: 8 },
-  3: { objectCount: 22, maxChain: 3, windowMinFrames: 7, windowMaxFrames: 13, climaxAt: 0.86, climaxWarnOnly: false, tightDensity: [0, 1], suppressRatio: [0, 0.25], compositeRatio: [0, 0.6], tapsPerSecond: 0.64, deathTarget: 12 },
-  4: { objectCount: 26, maxChain: 4, windowMinFrames: 7, windowMaxFrames: 13, climaxAt: 0.87, climaxWarnOnly: false, tightDensity: [0, 1], suppressRatio: [0, 0.3], compositeRatio: [0, 0.7], tapsPerSecond: 0.59, deathTarget: 18 },
-  5: { objectCount: 29, maxChain: 5, windowMinFrames: 7, windowMaxFrames: 13, climaxAt: 0.87, climaxWarnOnly: false, tightDensity: [0, 1], suppressRatio: [0, 0.3], compositeRatio: [0, 0.85], tapsPerSecond: 0.70, deathTarget: 25 },
-  6: { objectCount: 26, maxChain: 5, windowMinFrames: 6, windowMaxFrames: 12, climaxAt: 0.87, climaxWarnOnly: false, tightDensity: [0, 1], suppressRatio: [0, 0.3], compositeRatio: [0, 0.7], tapsPerSecond: 0.50, deathTarget: 35 },
-  7: { objectCount: 29, maxChain: 5, windowMinFrames: 6, windowMaxFrames: 12, climaxAt: 0.91, climaxWarnOnly: false, tightDensity: [0, 1], suppressRatio: [0, 0.3], compositeRatio: [0, 0.7], tapsPerSecond: 0.52, deathTarget: 45 },
-  8: { objectCount: 30, maxChain: 5, windowMinFrames: 6, windowMaxFrames: 12, climaxAt: 0.88, climaxWarnOnly: false, tightDensity: [0, 1], suppressRatio: [0, 0.35], compositeRatio: [0, 0.8], tapsPerSecond: 0.59, deathTarget: 60 },
-  9: { objectCount: 33, maxChain: 5, windowMinFrames: 6, windowMaxFrames: 12, climaxAt: 0.92, climaxWarnOnly: false, tightDensity: [0, 1], suppressRatio: [0, 0.35], compositeRatio: [0, 0.8], tapsPerSecond: 0.59, deathTarget: 80 },
-  10: { objectCount: 33, maxChain: 5, windowMinFrames: 6, windowMaxFrames: 12, climaxAt: 0.85, climaxWarnOnly: false, tightDensity: [0, 1], suppressRatio: [0, 0.35], compositeRatio: [0, 0.95], tapsPerSecond: 0.57, deathTarget: 110 },
+  1: { objectCount: 21, maxChain: 3, windowMinFrames: 7, windowMaxFrames: 13, climaxAt: 0.89, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.3], compositeRatio: [0, 0.6], tapsPerSecond: 0.66, deathTarget: 5 },
+  2: { objectCount: 22, maxChain: 3, windowMinFrames: 7, windowMaxFrames: 13, climaxAt: 0.88, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.3], compositeRatio: [0, 0.6], tapsPerSecond: 0.66, deathTarget: 8 },
+  3: { objectCount: 28, maxChain: 3, windowMinFrames: 7, windowMaxFrames: 13, climaxAt: 0.9, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.3], compositeRatio: [0, 0.8], tapsPerSecond: 0.71, deathTarget: 12 },
+  4: { objectCount: 38, maxChain: 4, windowMinFrames: 7, windowMaxFrames: 13, climaxAt: 0.87, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.35], compositeRatio: [0, 0.9], tapsPerSecond: 0.66, deathTarget: 18 },
+  5: { objectCount: 38, maxChain: 5, windowMinFrames: 7, windowMaxFrames: 13, climaxAt: 0.9, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.35], compositeRatio: [0, 0.9], tapsPerSecond: 0.78, deathTarget: 25 },
+  6: { objectCount: 35, maxChain: 5, windowMinFrames: 6, windowMaxFrames: 12, climaxAt: 0.91, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.35], compositeRatio: [0, 0.9], tapsPerSecond: 0.56, deathTarget: 35 },
+  7: { objectCount: 36, maxChain: 5, windowMinFrames: 6, windowMaxFrames: 12, climaxAt: 0.87, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.35], compositeRatio: [0, 0.9], tapsPerSecond: 0.59, deathTarget: 45 },
+  8: { objectCount: 36, maxChain: 5, windowMinFrames: 6, windowMaxFrames: 12, climaxAt: 0.89, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.4], compositeRatio: [0, 0.9], tapsPerSecond: 0.64, deathTarget: 60 },
+  9: { objectCount: 36, maxChain: 5, windowMinFrames: 6, windowMaxFrames: 12, climaxAt: 0.86, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.4], compositeRatio: [0, 0.9], tapsPerSecond: 0.60, deathTarget: 80 },
+  10: { objectCount: 45, maxChain: 5, windowMinFrames: 6, windowMaxFrames: 12, climaxAt: 0.88, climaxWarnOnly: false, tightDensity: [0, 9], suppressRatio: [0, 0.4], compositeRatio: [0, 0.95], tapsPerSecond: 0.70, deathTarget: 110 },
 }
 
 // ---------------------------------------------------------------------------
-// S1 FIRST STEP — 速度 3 px/f / 29秒 / 5,218px
-// 新要素: `block` — 跳ぶという操作そのもの
-// 実測: 生存窓 7f（最悪 7f）/ 連鎖 2 / 誤帰属 0 /
-//   狭窓密度 0.448 / 抑制率 0.000 / 複合度 0.292 /
-//   D(t) 12.00 @85.4% / タップ 19本 = 0.66/秒 / クリア 1721f
-//   **E[D_skill] = 4.2（目標 5）** [σ=30: 0.7 / σ=40: 4.2 / σ=50: 20.8] / D_knowledge = 0
+// S1 FIRST STEP — 速度 3 px/f / 32秒 / 5,742px
+// 新要素: `block` — 跳ぶという操作そのもの ＋ `spear` 静止
+// 実測: 生存窓 7f（最悪 7f）/ 連鎖 3 / 誤帰属 0 /
+//   狭窓密度 0.470 / 抑制率 0.000 / 複合度 0.267 /
+//   D(t) 12.75 @88.9% / タップ 21本 = 0.66/秒 / クリア 1896f
+//   狭窓の出所 15本: spear 15本
+//   **E[D_skill] = 5.0（目標 5）** [σ=30: 0.7 / σ=40: 5.0 / σ=50: 29.2] / D_knowledge = 0
 // ---------------------------------------------------------------------------
 const STAGE_1: StageDef = {
   id: 1,
   name: 'FIRST STEP',
   speedPxPerFrame: 3,
-  lengthPx: 5218,
+  lengthPx: 5742,
   safeRunwayPx: 144,
   groundY: 148,
   objects: [
@@ -64,617 +66,670 @@ const STAGE_1: StageDef = {
     { t: 'block', x: 2163, w: 24, h: 32 },
     { t: 'spear', x: 2450, h: 51, triggerX: -1, rise: 8 },
     { t: 'spear', x: 2719, h: 51, triggerX: -1, rise: 8 },
-    { t: 'block', x: 2988, w: 24, h: 16 },
-    { t: 'spear', x: 3275, h: 51, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 3544, h: 51, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 3813, h: 51, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 4082, h: 51, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 4351, h: 51, triggerX: -1, rise: 8 },
-    // クライマックス帯（到達率 85〜95%）— D(t) のピークはここに置く
-    { t: 'spear', x: 4528, h: 51, triggerX: -1, rise: 8 },
+    { t: 'spear', x: 2988, h: 51, triggerX: -1, rise: 8 },
+    { t: 'spear', x: 3257, h: 51, triggerX: -1, rise: 8 },
+    { t: 'spear', x: 3526, h: 51, triggerX: -1, rise: 8 },
+    { t: 'block', x: 3795, w: 24, h: 16 },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 4705 },
-    { t: 'block', x: 4884, w: 24, h: 32 },
-    { t: 'block', x: 5079, w: 24, h: 32 },
+    { t: 'warn', x: 4082 },
+    { t: 'spear', x: 4353, h: 51, triggerX: -1, rise: 8 },
+    { t: 'spear', x: 4622, h: 51, triggerX: -1, rise: 8 },
+    { t: 'spear', x: 4812, h: 51, triggerX: -1, rise: 8 },
+    // クライマックス帯（到達率 85〜95%）— D(t) のピークはここに置く
+    { t: 'spear', x: 5002, h: 51, triggerX: -1, rise: 8 },
+    { t: 'spear', x: 5192, h: 51, triggerX: -1, rise: 8 },
+    { t: 'block', x: 5382, w: 24, h: 32 },
+    { t: 'block', x: 5590, w: 24, h: 32 },
   ],
   // σ の実測用（§16-7）。推奨ルート上の各タップの生存窓 [最初, 最後]
   tapWindows: [
     [20, 55], [116, 151], [228, 235], [318, 324], [407, 414], [497, 504], [587, 593], [664, 691],
-    [772, 779], [862, 868], [935, 970], [1047, 1054], [1137, 1143], [1226, 1233], [1316, 1323], [1406, 1412],
-    [1465, 1471], [1571, 1598], [1636, 1663],
+    [772, 779], [862, 868], [951, 958], [1041, 1048], [1131, 1137], [1204, 1239], [1406, 1413], [1496, 1503],
+    [1559, 1566], [1623, 1629], [1686, 1693], [1737, 1764], [1806, 1833],
   ],
 }
 
 // ---------------------------------------------------------------------------
-// S2 GAP — 速度 3.1 px/f / 35秒 / 6,600px
-// 新要素: `pit` — 落ちたら死ぬ地形
-// 実測: 生存窓 7f（最悪 7f）/ 連鎖 1 / 誤帰属 0 /
-//   狭窓密度 0.479 / 抑制率 0.000 / 複合度 0.308 /
-//   D(t) 12.00 @85.6% / タップ 22本 = 0.62/秒 / クリア 2111f
-//   **E[D_skill] = 8.1（目標 8）** [σ=30: 1.0 / σ=40: 8.1 / σ=50: 60.7] / D_knowledge = 0
+// S2 GAP — 速度 3.1 px/f / 33秒 / 6,170px
+// 新要素: `pit` / `spike`
+// 実測: 生存窓 7f（最悪 7f）/ 連鎖 2 / 誤帰属 0 /
+//   狭窓密度 0.482 / 抑制率 0.000 / 複合度 0.000 /
+//   D(t) 12.00 @88.0% / タップ 22本 = 0.66/秒 / クリア 1973f
+//   狭窓の出所 16本: spear 8本 / spike 8本
+//   **E[D_skill] = 7.7（目標 8）** [σ=30: 1.0 / σ=40: 7.7 / σ=50: 53.6] / D_knowledge = 0
 // ---------------------------------------------------------------------------
 const STAGE_2: StageDef = {
   id: 2,
   name: 'GAP',
   speedPxPerFrame: 3.1,
-  lengthPx: 6600,
+  lengthPx: 6170,
   safeRunwayPx: 149,
   groundY: 148,
   objects: [
     { t: 'block', x: 252, w: 24, h: 16 },
-    { t: 'pit', x: 560, w: 56 },
-    { t: 'spear', x: 900, h: 51, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 1190, h: 51, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 1480, h: 51, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 1770, h: 51, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 2060, h: 51, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 2350, h: 51, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 2640, h: 51, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 2930, h: 51, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 3220, h: 51, triggerX: -1, rise: 8 },
-    { t: 'pit', x: 3510, w: 80 },
-    { t: 'spear', x: 3874, h: 51, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 4164, h: 51, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 4454, h: 51, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 4744, h: 51, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 5034, h: 51, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 5324, h: 51, triggerX: -1, rise: 8 },
-    { t: 'spike', x: 5500, n: 12 },
-    // クライマックス帯（到達率 85〜95%）— D(t) のピークはここに置く
-    { t: 'spike', x: 5766, n: 12 },
+    { t: 'pit', x: 496, w: 56 },
+    { t: 'spear', x: 772, h: 51, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 998, n: 12 },
+    { t: 'spear', x: 1314, h: 51, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 1540, n: 12 },
+    { t: 'spear', x: 1856, h: 51, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 2082, n: 12 },
+    { t: 'pit', x: 2398, w: 80 },
+    { t: 'spear', x: 2698, h: 51, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 2924, n: 12 },
+    { t: 'spear', x: 3240, h: 51, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 3466, n: 12 },
+    { t: 'spear', x: 3782, h: 51, triggerX: -1, rise: 8 },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 6032 },
-    { t: 'pit', x: 6210, w: 96 },
-    { t: 'block', x: 6476, w: 24, h: 32 },
+    { t: 'warn', x: 4008 },
+    { t: 'spike', x: 4236, n: 12 },
+    { t: 'pit', x: 4552, w: 96 },
+    { t: 'spear', x: 4868, h: 51, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 5050, n: 12 },
+    // クライマックス帯（到達率 85〜95%）— D(t) のピークはここに置く
+    { t: 'spear', x: 5322, h: 51, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 5504, n: 12 },
+    { t: 'block', x: 5776, w: 24, h: 32 },
+    { t: 'block', x: 5976, w: 24, h: 32 },
   ],
   // σ の実測用（§16-7）。推奨ルート上の各タップの生存窓 [最初, 最後]
   tapWindows: [
-    [21, 56], [134, 164], [246, 253], [340, 346], [433, 440], [527, 534], [621, 627], [714, 721],
-    [808, 814], [901, 908], [995, 1001], [1093, 1116], [1206, 1212], [1299, 1306], [1393, 1399], [1486, 1493],
-    [1580, 1586], [1673, 1680], [1745, 1751], [1831, 1837], [1969, 1987], [2032, 2060],
+    [21, 56], [113, 143], [205, 212], [293, 299], [380, 386], [468, 474], [555, 561], [642, 649],
+    [735, 757], [826, 833], [914, 920], [1001, 1008], [1089, 1095], [1176, 1183], [1337, 1343], [1435, 1452],
+    [1526, 1533], [1600, 1606], [1673, 1679], [1746, 1752], [1806, 1834], [1871, 1898],
   ],
 }
 
 // ---------------------------------------------------------------------------
-// S3 THORN — 速度 3.5 px/f / 34秒 / 7,188px
-// 新要素: `spear` 静止 — 高くて上に乗れない障害物
-// 実測: 生存窓 7f（最悪 7f）/ 連鎖 2 / 誤帰属 0 /
-//   狭窓密度 0.526 / 抑制率 0.000 / 複合度 0.396 /
-//   D(t) 12.00 @86.5% / タップ 22本 = 0.64/秒 / クリア 2038f
-//   **E[D_skill] = 13.0（目標 12）** [σ=30: 1.4 / σ=40: 13.0 / σ=50: 127.6] / D_knowledge = 0
+// S3 THORN — 速度 3.5 px/f / 39秒 / 8,227px
+// 新要素: `spear` の反復（狭窓の主力へ）
+// 実測: 生存窓 7f（最悪 7f）/ 連鎖 3 / 誤帰属 0 /
+//   狭窓密度 0.562 / 抑制率 0.000 / 複合度 0.000 /
+//   D(t) 11.25 @89.9% / タップ 28本 = 0.71/秒 / クリア 2335f
+//   狭窓の出所 22本: spear 11本 / spike 11本
+//   **E[D_skill] = 10.1（目標 12）** [σ=30: 1.0 / σ=40: 10.1 / σ=50: 105.2] / D_knowledge = 0
 // ---------------------------------------------------------------------------
 const STAGE_3: StageDef = {
   id: 3,
   name: 'THORN',
   speedPxPerFrame: 3.5,
-  lengthPx: 7188,
+  lengthPx: 8227,
   safeRunwayPx: 168,
   groundY: 148,
   objects: [
     { t: 'block', x: 285, w: 24, h: 16 },
-    { t: 'spear', x: 630, h: 48, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 957, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 1284, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 1611, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 1938, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 2265, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 2592, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 2919, h: 50, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 3246, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 3573, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 3900, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 4227, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 4554, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 4881, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 5208, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 5535, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 5862, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 6093, h: 52, triggerX: -1, rise: 8 },
-    // クライマックス帯（到達率 85〜95%）— D(t) のピークはここに置く
-    { t: 'spear', x: 6324, h: 52, triggerX: -1, rise: 8 },
+    { t: 'pit', x: 542, w: 88 },
+    { t: 'spear', x: 863, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 1102, n: 13 },
+    { t: 'spear', x: 1439, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 1678, n: 13 },
+    { t: 'spear', x: 2015, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 2254, n: 13 },
+    { t: 'spear', x: 2591, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 2830, n: 13 },
+    { t: 'block', x: 3167, w: 24, h: 32 },
+    { t: 'spear', x: 3424, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 3663, n: 13 },
+    { t: 'spear', x: 4000, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 4239, n: 13 },
+    { t: 'spear', x: 4576, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 4815, n: 13 },
+    { t: 'spear', x: 5152, h: 52, triggerX: -1, rise: 8 },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 6555 },
+    { t: 'warn', x: 5391 },
+    { t: 'spike', x: 5632, n: 13 },
+    { t: 'pit', x: 5969, w: 104 },
+    { t: 'spear', x: 6306, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 6498, n: 13 },
     { t: 'spear', x: 6788, h: 52, triggerX: -1, rise: 8 },
-    { t: 'block', x: 7019, w: 24, h: 32 },
+    { t: 'spike', x: 6980, n: 13 },
+    // クライマックス帯（到達率 85〜95%）— D(t) のピークはここに置く
+    { t: 'spear', x: 7270, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 7462, n: 13 },
+    { t: 'block', x: 7752, w: 24, h: 16 },
+    { t: 'block', x: 7962, w: 24, h: 32 },
   ],
   // σ の実測用（§16-7）。推奨ルート上の各タップの生存窓 [最初, 最後]
   tapWindows: [
-    [23, 59], [136, 147], [232, 239], [326, 332], [419, 425], [513, 519], [606, 612], [700, 706],
-    [791, 800], [886, 893], [980, 986], [1073, 1079], [1167, 1173], [1260, 1266], [1354, 1360], [1447, 1453],
-    [1540, 1547], [1634, 1640], [1700, 1706], [1766, 1772], [1898, 1905], [1951, 1979],
+    [23, 59], [118, 140], [206, 212], [287, 294], [370, 376], [451, 459], [535, 541], [616, 623],
+    [699, 705], [780, 788], [851, 878], [937, 943], [1018, 1026], [1102, 1108], [1183, 1191], [1266, 1273],
+    [1347, 1355], [1431, 1437], [1581, 1589], [1673, 1691], [1761, 1767], [1828, 1836], [1898, 1905], [1966, 1974],
+    [2036, 2042], [2104, 2111], [2157, 2192], [2221, 2248],
   ],
 }
 
 // ---------------------------------------------------------------------------
-// S4 LOW SKY — 速度 3.75 px/f / 37秒 / 8,411px
-// 新要素: `ceil` — 跳ばないという判断
+// S4 LOW SKY — 速度 3.75 px/f / 40秒 / 8,903px
+// 新要素: `ceil` ＋ **`GATE`（門）**
 // 実測: 生存窓 7f（最悪 7f）/ 連鎖 1 / 誤帰属 0 /
-//   狭窓密度 0.535 / 抑制率 0.154 / 複合度 0.437 /
-//   D(t) 12.00 @87.0% / タップ 22本 = 0.59/秒 / クリア 2228f
-//   **E[D_skill] = 18.3（目標 18）** [σ=30: 1.7 / σ=40: 18.3 / σ=50: 208.5] / D_knowledge = 0
+//   狭窓密度 0.607 / 抑制率 0.316 / 複合度 0.224 /
+//   D(t) 12.00 @87.4% / タップ 26本 = 0.66/秒 / クリア 2360f
+//   狭窓の出所 24本: spear 8本 / GATE 8本 / spike 8本
+//   **E[D_skill] = 17.7（目標 18）** [σ=30: 1.5 / σ=40: 17.7 / σ=50: 251.4] / D_knowledge = 0
 // ---------------------------------------------------------------------------
 const STAGE_4: StageDef = {
   id: 4,
   name: 'LOW SKY',
   speedPxPerFrame: 3.75,
-  lengthPx: 8411,
+  lengthPx: 8903,
   safeRunwayPx: 180,
   groundY: 148,
   objects: [
     { t: 'block', x: 305, w: 24, h: 16 },
-    { t: 'ceil', x: 642, w: 48, y: 96 },
-    { t: 'spear', x: 1003, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 1322, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 1641, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 1960, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 2279, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 2598, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 2917, h: 52, triggerX: -1, rise: 8 },
-    { t: 'ceil', x: 3236, w: 48, y: 88 },
-    { t: 'spear', x: 3597, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 3916, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 4235, h: 52, triggerX: -1, rise: 8 },
-    { t: 'ceil', x: 4554, w: 48, y: 96 },
-    { t: 'spear', x: 4915, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 5234, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 5553, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 5872, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 6191, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 6510, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 6735, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 6960, h: 52, triggerX: -1, rise: 8 },
-    // クライマックス帯（到達率 85〜95%）— D(t) のピークはここに置く
-    { t: 'spear', x: 7185, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 7410, h: 52, triggerX: -1, rise: 8 },
+    { t: 'ceil', x: 579, w: 48, y: 96 },
+    { t: 'spear', x: 877, h: 52, triggerX: -1, rise: 8 },
+    { t: 'ceil', x: 1133, w: 6, y: 63 },
+    { t: 'spear', x: 1133, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 1389, n: 14 },
+    { t: 'spear', x: 1751, h: 52, triggerX: -1, rise: 8 },
+    { t: 'ceil', x: 2007, w: 6, y: 63 },
+    { t: 'spear', x: 2007, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 2263, n: 14 },
+    { t: 'spear', x: 2625, h: 52, triggerX: -1, rise: 8 },
+    { t: 'ceil', x: 2881, w: 6, y: 63 },
+    { t: 'spear', x: 2881, h: 52, triggerX: -1, rise: 8 },
+    { t: 'ceil', x: 3137, w: 48, y: 88 },
+    { t: 'spike', x: 3435, n: 14 },
+    { t: 'spear', x: 3797, h: 52, triggerX: -1, rise: 8 },
+    { t: 'ceil', x: 4053, w: 6, y: 63 },
+    { t: 'spear', x: 4053, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 4309, n: 14 },
+    { t: 'spear', x: 4671, h: 52, triggerX: -1, rise: 8 },
+    { t: 'ceil', x: 4927, w: 6, y: 63 },
+    { t: 'spear', x: 4927, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 5183, n: 14 },
+    { t: 'spear', x: 5545, h: 52, triggerX: -1, rise: 8 },
+    { t: 'ceil', x: 5801, w: 48, y: 96 },
+    { t: 'ceil', x: 6099, w: 6, y: 63 },
+    { t: 'spear', x: 6099, h: 52, triggerX: -1, rise: 8 },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 7635 },
-    { t: 'ceil', x: 7862, w: 48, y: 104 },
-    { t: 'block', x: 8129, w: 24, h: 32 },
+    { t: 'warn', x: 6355 },
+    { t: 'spike', x: 6613, n: 14 },
+    { t: 'spear', x: 6925, h: 52, triggerX: -1, rise: 8 },
+    { t: 'ceil', x: 7131, w: 6, y: 63 },
+    { t: 'spear', x: 7131, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 7337, n: 14 },
+    // クライマックス帯（到達率 85〜95%）— D(t) のピークはここに置く
+    { t: 'spear', x: 7649, h: 52, triggerX: -1, rise: 8 },
+    { t: 'ceil', x: 7855, w: 6, y: 63 },
+    { t: 'spear', x: 7855, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 8061, n: 14 },
+    { t: 'ceil', x: 8373, w: 48, y: 104 },
+    { t: 'block', x: 8621, w: 24, h: 32 },
   ],
   // σ の実測用（§16-7）。推奨ルート上の各タップの生存窓 [最初, 最後]
   tapWindows: [
-    [24, 60], [228, 234], [313, 319], [398, 404], [483, 489], [568, 574], [653, 659], [738, 744],
-    [919, 926], [1004, 1011], [1089, 1096], [1271, 1277], [1356, 1362], [1441, 1447], [1526, 1532], [1611, 1617],
-    [1696, 1702], [1756, 1762], [1816, 1822], [1876, 1882], [1936, 1942], [2115, 2142],
+    [24, 60], [194, 200], [262, 269], [343, 351], [427, 433], [495, 502], [577, 584], [660, 666],
+    [728, 735], [889, 897], [973, 979], [1041, 1047], [1122, 1130], [1206, 1212], [1274, 1280], [1355, 1363],
+    [1439, 1445], [1586, 1593], [1737, 1744], [1807, 1813], [1862, 1868], [1930, 1937], [2000, 2006], [2055, 2061],
+    [2123, 2130], [2246, 2273],
   ],
 }
 
 // ---------------------------------------------------------------------------
-// S5 PENDULUM — 速度 4 px/f / 40秒 / 9,554px
+// S5 PENDULUM — 速度 4 px/f / 39秒 / 9,286px
 // 新要素: `swing`（G1 障害物が動く）＋ 章末試験
-// 実測: 生存窓 7f（最悪 7f）/ 連鎖 1 / 誤帰属 0 /
-//   狭窓密度 0.553 / 抑制率 0.034 / 複合度 0.363 /
-//   D(t) 12.00 @86.9% / タップ 28本 = 0.70/秒 / クリア 2375f
-//   **E[D_skill] = 17.9（目標 25）** [σ=30: 1.5 / σ=40: 17.9 / σ=50: 228.9] / D_knowledge = 0
+// 実測: 生存窓 7f（最悪 7f）/ 連鎖 3 / 誤帰属 0 /
+//   狭窓密度 0.620 / 抑制率 0.211 / 複合度 0.223 /
+//   D(t) 12.42 @89.9% / タップ 30本 = 0.78/秒 / クリア 2308f
+//   狭窓の出所 24本: spear 8本 / GATE 8本 / spike 8本
+//   **E[D_skill] = 24.8（目標 25）** [σ=30: 1.8 / σ=40: 24.8 / σ=50: 400.6] / D_knowledge = 0
 // ---------------------------------------------------------------------------
 const STAGE_5: StageDef = {
   id: 5,
   name: 'PENDULUM',
   speedPxPerFrame: 4,
-  lengthPx: 9554,
+  lengthPx: 9286,
   safeRunwayPx: 192,
   groundY: 148,
   objects: [
     { t: 'block', x: 325, w: 24, h: 16 },
-    { t: 'swing', x: 649, y: 132, amp: 16, period: 90, phase: 0 },
-    { t: 'spear', x: 981, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 1287, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 1593, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 1899, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 2205, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 2511, h: 52, triggerX: -1, rise: 8 },
-    { t: 'swing', x: 2817, y: 132, amp: 24, period: 90, phase: 0 },
-    { t: 'spear', x: 3157, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 3463, h: 52, triggerX: -1, rise: 8 },
-    { t: 'swing', x: 3769, y: 132, amp: 32, period: 90, phase: 0 },
-    { t: 'spear', x: 4117, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 4423, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 4729, h: 52, triggerX: -1, rise: 8 },
-    { t: 'swing', x: 5035, y: 132, amp: 24, period: 90, phase: 0 },
-    { t: 'spear', x: 5375, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 5681, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 5987, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 6293, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 6599, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 6905, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spear', x: 7211, h: 52, triggerX: -1, rise: 8 },
-    { t: 'spike', x: 7427, n: 16 },
-    { t: 'spike', x: 7765, n: 16 },
-    { t: 'spike', x: 8103, n: 16 },
-    // クライマックス帯（到達率 85〜95%）— D(t) のピークはここに置く
-    { t: 'spike', x: 8441, n: 16 },
+    { t: 'swing', x: 599, y: 132, amp: 16, period: 90, phase: 0 },
+    { t: 'spear', x: 881, h: 52, triggerX: -1, rise: 8 },
+    { t: 'ceil', x: 1137, w: 6, y: 63 },
+    { t: 'spear', x: 1137, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 1393, n: 16 },
+    { t: 'spear', x: 1771, h: 52, triggerX: -1, rise: 8 },
+    { t: 'ceil', x: 2027, w: 6, y: 63 },
+    { t: 'spear', x: 2027, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 2283, n: 16 },
+    { t: 'spear', x: 2661, h: 52, triggerX: -1, rise: 8 },
+    { t: 'ceil', x: 2917, w: 6, y: 63 },
+    { t: 'spear', x: 2917, h: 52, triggerX: -1, rise: 8 },
+    { t: 'swing', x: 3173, y: 132, amp: 24, period: 90, phase: 0 },
+    { t: 'spike', x: 3463, n: 16 },
+    { t: 'spear', x: 3841, h: 52, triggerX: -1, rise: 8 },
+    { t: 'ceil', x: 4097, w: 6, y: 63 },
+    { t: 'spear', x: 4097, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 4353, n: 16 },
+    { t: 'spear', x: 4731, h: 52, triggerX: -1, rise: 8 },
+    { t: 'ceil', x: 4987, w: 6, y: 63 },
+    { t: 'spear', x: 4987, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 5243, n: 16 },
+    { t: 'spear', x: 5621, h: 52, triggerX: -1, rise: 8 },
+    { t: 'swing', x: 5877, y: 132, amp: 32, period: 90, phase: 0 },
+    { t: 'ceil', x: 6175, w: 6, y: 63 },
+    { t: 'spear', x: 6175, h: 52, triggerX: -1, rise: 8 },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 8779 },
-    { t: 'ceil', x: 8997, w: 48, y: 96 },
-    { t: 'block', x: 9255, w: 24, h: 32 },
+    { t: 'warn', x: 6431 },
+    { t: 'spike', x: 6689, n: 16 },
+    { t: 'spear', x: 7067, h: 52, triggerX: -1, rise: 8 },
+    { t: 'ceil', x: 7323, w: 6, y: 63 },
+    { t: 'spear', x: 7323, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 7579, n: 16 },
+    // クライマックス帯（到達率 85〜95%）— D(t) のピークはここに置く
+    { t: 'spear', x: 7957, h: 52, triggerX: -1, rise: 8 },
+    { t: 'ceil', x: 8213, w: 6, y: 63 },
+    { t: 'spear', x: 8213, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 8419, n: 16 },
+    { t: 'swing', x: 8747, y: 132, amp: 24, period: 90, phase: 0 },
+    { t: 'block', x: 8987, w: 24, h: 32 },
   ],
   // σ の実測用（§16-7）。推奨ルート上の各タップの生存窓 [最初, 最後]
   tapWindows: [
-    [26, 61], [109, 145], [206, 213], [283, 289], [359, 366], [436, 442], [512, 519], [589, 595],
-    [652, 688], [750, 757], [827, 833], [892, 927], [990, 997], [1067, 1073], [1143, 1150], [1205, 1241],
-    [1305, 1311], [1381, 1388], [1458, 1464], [1534, 1541], [1611, 1617], [1687, 1694], [1764, 1770], [1833, 1839],
-    [1917, 1923], [2002, 2008], [2086, 2092], [2262, 2289],
+    [26, 61], [98, 133], [181, 188], [245, 252], [324, 330], [404, 410], [468, 474], [547, 553],
+    [626, 633], [690, 697], [742, 777], [842, 848], [921, 928], [985, 992], [1064, 1070], [1144, 1150],
+    [1208, 1214], [1287, 1293], [1366, 1373], [1416, 1452], [1505, 1511], [1648, 1654], [1728, 1734], [1792, 1798],
+    [1871, 1877], [1950, 1957], [2014, 2021], [2081, 2087], [2133, 2168], [2195, 2222],
   ],
 }
 
 // ---------------------------------------------------------------------------
-// S6 THE WALL — 速度 4.25 px/f / 48秒 / 12,268px
-// 新要素: WALL + 踏み台（G2 踏み台必須）＋ `plat`
+// S6 THE WALL — 速度 4.25 px/f / 47秒 / 11,860px
+// 新要素: WALL + 踏み台（G2）＋ `plat`
 // 実測: 生存窓 6f（最悪 1f）/ 連鎖 2 / 誤帰属 0 /
-//   狭窓密度 0.457 / 抑制率 0.000 / 複合度 0.000 /
-//   D(t) 13.00 @87.0% / タップ 24本 = 0.50/秒 / クリア 2874f
-//   **E[D_skill] = 38.2（目標 35）** [σ=30: 2.8 / σ=40: 38.2 / σ=50: 621.5] / D_knowledge = 0
+//   狭窓密度 0.452 / 抑制率 0.229 / 複合度 0.000 /
+//   D(t) 17.25 @91.2% / タップ 26本 = 0.56/秒 / クリア 2778f
+//   狭窓の出所 21本: WALL 10本 / GATE 8本 / spike 3本
+//   **E[D_skill] = 31.1（目標 35）** [σ=30: 2.4 / σ=40: 31.1 / σ=50: 496.4] / D_knowledge = 0
 // ---------------------------------------------------------------------------
 const STAGE_6: StageDef = {
   id: 6,
   name: 'THE WALL',
   speedPxPerFrame: 4.25,
-  lengthPx: 12268,
+  lengthPx: 11860,
   safeRunwayPx: 204,
   groundY: 148,
   objects: [
     { t: 'block', x: 346, w: 24, h: 16 },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 1149 },
-    { t: 'block', x: 1237, w: 48, h: 32 },
-    { t: 'block', x: 1293, w: 24, h: 64 },
+    { t: 'warn', x: 848 },
+    { t: 'block', x: 936, w: 48, h: 32 },
+    { t: 'block', x: 992, w: 24, h: 64 },
+    { t: 'ceil', x: 1494, w: 6, y: 63 },
+    { t: 'spear', x: 1494, h: 53, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 1978, n: 16 },
+    { t: 'ceil', x: 2584, w: 6, y: 63 },
+    { t: 'spear', x: 2584, h: 52, triggerX: -1, rise: 8 },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 2096 },
-    { t: 'block', x: 2184, w: 48, h: 32 },
-    { t: 'block', x: 2240, w: 24, h: 64 },
+    { t: 'warn', x: 3068 },
+    { t: 'block', x: 3156, w: 52, h: 32 },
+    { t: 'block', x: 3216, w: 24, h: 64 },
+    { t: 'spike', x: 3718, n: 16 },
+    { t: 'ceil', x: 4324, w: 6, y: 63 },
+    { t: 'spear', x: 4324, h: 53, triggerX: -1, rise: 8 },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 3043 },
-    { t: 'block', x: 3131, w: 48, h: 32 },
-    { t: 'block', x: 3187, w: 24, h: 64 },
+    { t: 'warn', x: 4808 },
+    { t: 'block', x: 4896, w: 48, h: 32 },
+    { t: 'block', x: 4952, w: 24, h: 64 },
+    { t: 'ceil', x: 5454, w: 6, y: 63 },
+    { t: 'spear', x: 5454, h: 53, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 5938, n: 16 },
+    { t: 'ceil', x: 6544, w: 6, y: 63 },
+    { t: 'spear', x: 6544, h: 52, triggerX: -1, rise: 8 },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 3990 },
-    { t: 'block', x: 4078, w: 48, h: 32 },
-    { t: 'block', x: 4134, w: 24, h: 64 },
+    { t: 'warn', x: 7028 },
+    { t: 'block', x: 7116, w: 52, h: 32 },
+    { t: 'block', x: 7176, w: 24, h: 64 },
+    { t: 'spike', x: 7678, n: 16 },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 4937 },
-    { t: 'block', x: 5025, w: 48, h: 32 },
-    { t: 'block', x: 5081, w: 24, h: 64 },
-    // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 5884 },
-    { t: 'block', x: 5972, w: 48, h: 32 },
-    { t: 'block', x: 6028, w: 24, h: 64 },
-    // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 6831 },
-    { t: 'block', x: 6919, w: 48, h: 32 },
-    { t: 'block', x: 6975, w: 24, h: 64 },
-    { t: 'plat', x: 7778, y: 108 },
-    // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 8589 },
-    { t: 'block', x: 8677, w: 48, h: 32 },
-    { t: 'block', x: 8733, w: 24, h: 64 },
-    // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 9536 },
-    { t: 'block', x: 9624, w: 48, h: 32 },
-    { t: 'block', x: 9680, w: 24, h: 64 },
+    { t: 'warn', x: 8284 },
+    { t: 'ceil', x: 8770, w: 6, y: 63 },
+    { t: 'spear', x: 8770, h: 53, triggerX: -1, rise: 8 },
+    { t: 'plat', x: 9254, y: 108 },
+    { t: 'ceil', x: 9764, w: 6, y: 63 },
+    { t: 'spear', x: 9764, h: 53, triggerX: -1, rise: 8 },
     // クライマックス帯（到達率 85〜95%）— D(t) のピークはここに置く
+    { t: 'spike', x: 10248, n: 16 },
+    { t: 'ceil', x: 10663, w: 6, y: 63 },
+    { t: 'spear', x: 10663, h: 52, triggerX: -1, rise: 8 },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 10483 },
-    { t: 'block', x: 10571, w: 48, h: 32 },
-    { t: 'block', x: 10627, w: 24, h: 64 },
-    // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 11430 },
-    { t: 'block', x: 11518, w: 48, h: 32 },
-    { t: 'block', x: 11574, w: 24, h: 64 },
-    // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 11871 },
-    { t: 'plat', x: 12152, y: 100 },
-    { t: 'block', x: 12457, w: 24, h: 32 },
+    { t: 'warn', x: 10956 },
+    { t: 'block', x: 11044, w: 52, h: 32 },
+    { t: 'block', x: 11104, w: 24, h: 64 },
+    { t: 'plat', x: 11415, y: 100 },
+    { t: 'block', x: 11734, w: 24, h: 32 },
   ],
   // σ の実測用（§16-7）。推奨ルート上の各タップの生存窓 [最初, 最後]
   tapWindows: [
-    [27, 62], [240, 247], [275, 281], [463, 470], [498, 504], [686, 692], [721, 726], [909, 915],
-    [944, 949], [1132, 1138], [1167, 1172], [1354, 1361], [1389, 1395], [1577, 1584], [1612, 1618], [1782, 1792],
-    [1991, 1997], [2026, 2031], [2214, 2220], [2249, 2254], [2437, 2443], [2472, 2477], [2659, 2666], [2694, 2700],
+    [27, 62], [170, 176], [205, 210], [314, 319], [441, 448], [570, 577], [692, 699], [727, 733],
+    [850, 858], [980, 985], [1101, 1108], [1136, 1142], [1246, 1251], [1372, 1380], [1502, 1508], [1624, 1631],
+    [1659, 1665], [1782, 1789], [2026, 2031], [2130, 2140], [2260, 2265], [2387, 2394], [2471, 2477], [2548, 2555],
+    [2583, 2589], [2710, 2737],
   ],
 }
 
 // ---------------------------------------------------------------------------
-// S7 VERMIN — 速度 4.5 px/f / 52秒 / 14,144px
+// S7 VERMIN — 速度 4.5 px/f / 51秒 / 13,744px
 // 新要素: `mouse`（G3 正面から飛んでくる）
-// 実測: 生存窓 6f（最悪 1f）/ 連鎖 2 / 誤帰属 0 /
-//   狭窓密度 0.420 / 抑制率 0.000 / 複合度 0.000 /
-//   D(t) 19.00 @90.7% / タップ 27本 = 0.52/秒 / クリア 3131f
-//   **E[D_skill] = 37.3（目標 45）** [σ=30: 2.7 / σ=40: 37.3 / σ=50: 580.0] / D_knowledge = 0
+// 実測: 生存窓 6f（最悪 1f）/ 連鎖 3 / 誤帰属 0 /
+//   狭窓密度 0.471 / 抑制率 0.167 / 複合度 0.000 /
+//   D(t) 20.00 @86.6% / タップ 30本 = 0.59/秒 / クリア 3042f
+//   狭窓の出所 24本: WALL 12本 / GATE 6本 / spike 6本
+//   **E[D_skill] = 37.7（目標 45）** [σ=30: 2.6 / σ=40: 37.7 / σ=50: 670.7] / D_knowledge = 0
 // ---------------------------------------------------------------------------
 const STAGE_7: StageDef = {
   id: 7,
   name: 'VERMIN',
   speedPxPerFrame: 4.5,
-  lengthPx: 14144,
+  lengthPx: 13744,
   safeRunwayPx: 216,
   groundY: 148,
   objects: [
     { t: 'block', x: 366, w: 24, h: 16 },
-    { t: 'fly', x: 1140, alt: 'LOW', vx: 2, amp: 0 },
+    { t: 'fly', x: 953, alt: 'LOW', vx: 2, amp: 0 },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 1902 },
-    { t: 'block', x: 1990, w: 52, h: 32 },
-    { t: 'block', x: 2050, w: 24, h: 64 },
+    { t: 'warn', x: 1528 },
+    { t: 'block', x: 1616, w: 52, h: 32 },
+    { t: 'block', x: 1676, w: 24, h: 64 },
+    { t: 'ceil', x: 2263, w: 6, y: 62 },
+    { t: 'spear', x: 2263, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 2832, n: 18 },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 2824 },
-    { t: 'block', x: 2912, w: 52, h: 32 },
-    { t: 'block', x: 2972, w: 24, h: 64 },
+    { t: 'warn', x: 3539 },
+    { t: 'block', x: 3627, w: 52, h: 32 },
+    { t: 'block', x: 3687, w: 24, h: 64 },
+    { t: 'ceil', x: 4274, w: 6, y: 62 },
+    { t: 'spear', x: 4274, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 4843, n: 18 },
+    { t: 'fly', x: 5550, alt: 'LOW', vx: 3, amp: 0 },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 3746 },
-    { t: 'block', x: 3834, w: 52, h: 32 },
-    { t: 'block', x: 3894, w: 24, h: 64 },
-    { t: 'fly', x: 4668, alt: 'LOW', vx: 3, amp: 0 },
+    { t: 'warn', x: 6125 },
+    { t: 'block', x: 6213, w: 52, h: 32 },
+    { t: 'block', x: 6273, w: 24, h: 64 },
+    { t: 'ceil', x: 6860, w: 6, y: 62 },
+    { t: 'spear', x: 6860, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 7429, n: 18 },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 5430 },
-    { t: 'block', x: 5518, w: 52, h: 32 },
-    { t: 'block', x: 5578, w: 24, h: 64 },
-    { t: 'fly', x: 6352, alt: 'LOW', vx: 2.5, amp: 0 },
+    { t: 'warn', x: 8136 },
+    { t: 'block', x: 8224, w: 52, h: 32 },
+    { t: 'block', x: 8284, w: 24, h: 64 },
+    { t: 'ceil', x: 8871, w: 6, y: 62 },
+    { t: 'spear', x: 8871, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 9440, n: 18 },
+    { t: 'fly', x: 10147, alt: 'LOW', vx: 2.5, amp: 0 },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 7114 },
-    { t: 'block', x: 7202, w: 52, h: 32 },
-    { t: 'block', x: 7262, w: 24, h: 64 },
+    { t: 'warn', x: 10722 },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 8036 },
-    { t: 'block', x: 8124, w: 52, h: 32 },
-    { t: 'block', x: 8184, w: 24, h: 64 },
-    { t: 'fly', x: 8958, alt: 'LOW', vx: 3.5, amp: 0 },
-    // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 9720 },
-    { t: 'block', x: 9808, w: 52, h: 32 },
-    { t: 'block', x: 9868, w: 24, h: 64 },
-    // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 10642 },
-    { t: 'block', x: 10730, w: 52, h: 32 },
-    { t: 'block', x: 10790, w: 24, h: 64 },
-    // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 11564 },
-    { t: 'block', x: 11652, w: 52, h: 32 },
-    { t: 'block', x: 11712, w: 24, h: 64 },
+    { t: 'warn', x: 10983 },
+    { t: 'block', x: 11071, w: 52, h: 32 },
+    { t: 'block', x: 11131, w: 24, h: 64 },
+    { t: 'ceil', x: 11408, w: 6, y: 62 },
+    { t: 'spear', x: 11408, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 11667, n: 18 },
     // クライマックス帯（到達率 85〜95%）— D(t) のピークはここに置く
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 12486 },
-    { t: 'block', x: 12574, w: 52, h: 32 },
-    { t: 'block', x: 12634, w: 24, h: 64 },
-    // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 12996 },
-    { t: 'block', x: 13084, w: 52, h: 32 },
-    { t: 'block', x: 13144, w: 24, h: 64 },
-    // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 13506 },
-    { t: 'plat', x: 13852, y: 108 },
-    { t: 'block', x: 14222, w: 24, h: 32 },
+    { t: 'warn', x: 12064 },
+    { t: 'block', x: 12152, w: 52, h: 32 },
+    { t: 'block', x: 12212, w: 24, h: 64 },
+    { t: 'ceil', x: 12489, w: 6, y: 62 },
+    { t: 'spear', x: 12489, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 12748, n: 18 },
+    { t: 'fly', x: 13145, alt: 'LOW', vx: 3.5, amp: 0 },
+    { t: 'block', x: 13410, w: 24, h: 32 },
   ],
   // σ の実測用（§16-7）。推奨ルート上の各タップの生存窓 [最初, 最後]
   tapWindows: [
-    [28, 63], [185, 220], [392, 399], [427, 433], [597, 604], [632, 638], [802, 809], [837, 843],
-    [963, 999], [1176, 1183], [1211, 1217], [1340, 1375], [1551, 1557], [1586, 1591], [1756, 1762], [1791, 1796],
-    [1914, 1950], [2130, 2136], [2165, 2170], [2335, 2341], [2370, 2375], [2540, 2546], [2575, 2580], [2744, 2751],
-    [2779, 2785], [2858, 2864], [2893, 2898],
+    [28, 63], [143, 178], [309, 316], [344, 350], [465, 472], [607, 613], [756, 763], [791, 797],
+    [912, 919], [1054, 1060], [1159, 1195], [1331, 1337], [1366, 1371], [1487, 1494], [1629, 1635], [1778, 1784],
+    [1813, 1818], [1934, 1941], [2076, 2081], [2183, 2219], [2410, 2417], [2445, 2451], [2498, 2505], [2571, 2576],
+    [2651, 2657], [2686, 2691], [2738, 2745], [2811, 2817], [2853, 2880], [2930, 2957],
   ],
 }
 
 // ---------------------------------------------------------------------------
-// S8 FALLOUT — 速度 4.75 px/f / 47秒 / 13,513px
+// S8 FALLOUT — 速度 4.75 px/f / 44秒 / 12,527px
 // 新要素: `drop`（G5 浮遊オブジェクトの落下）
-// 実測: 生存窓 6f（最悪 1f）/ 連鎖 2 / 誤帰属 0 /
-//   狭窓密度 0.485 / 抑制率 0.067 / 複合度 0.000 /
-//   D(t) 14.00 @88.0% / タップ 28本 = 0.59/秒 / クリア 2834f
-//   **E[D_skill] = 47.6（目標 60）** [σ=30: 3.1 / σ=40: 47.6 / σ=50: 850.0] / D_knowledge = 0
+// 実測: 生存窓 6f（最悪 1f）/ 連鎖 3 / 誤帰属 0 /
+//   狭窓密度 0.546 / 抑制率 0.222 / 複合度 0.000 /
+//   D(t) 20.00 @89.3% / タップ 28本 = 0.64/秒 / クリア 2626f
+//   狭窓の出所 24本: WALL 12本 / GATE 6本 / spike 6本
+//   **E[D_skill] = 59.1（目標 60）** [σ=30: 3.5 / σ=40: 59.1 / σ=50: 1214.2] / D_knowledge = 0
 // ---------------------------------------------------------------------------
 const STAGE_8: StageDef = {
   id: 8,
   name: 'FALLOUT',
   speedPxPerFrame: 4.75,
-  lengthPx: 13513,
+  lengthPx: 12527,
   safeRunwayPx: 228,
   groundY: 148,
   objects: [
     { t: 'block', x: 386, w: 24, h: 16 },
-    { t: 'drop', x: 1004, y: 108, triggerX: -1, falls: false },
+    { t: 'drop', x: 865, y: 108, triggerX: -1, falls: false },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 1614 },
-    { t: 'block', x: 1702, w: 56, h: 32 },
-    { t: 'block', x: 1766, w: 24, h: 64 },
+    { t: 'warn', x: 1336 },
+    { t: 'block', x: 1424, w: 56, h: 32 },
+    { t: 'block', x: 1488, w: 24, h: 64 },
+    { t: 'ceil', x: 1967, w: 6, y: 63 },
+    { t: 'spear', x: 1967, h: 53, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 2428, n: 19 },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 2384 },
-    { t: 'block', x: 2472, w: 56, h: 32 },
-    { t: 'block', x: 2536, w: 24, h: 64 },
+    { t: 'warn', x: 3035 },
+    { t: 'block', x: 3123, w: 56, h: 32 },
+    { t: 'block', x: 3187, w: 24, h: 64 },
+    { t: 'ceil', x: 3666, w: 6, y: 63 },
+    { t: 'spear', x: 3666, h: 53, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 4127, n: 19 },
+    { t: 'drop', x: 4734, y: 108, triggerX: 4434, falls: true, tell: true },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 3154 },
-    { t: 'block', x: 3242, w: 56, h: 32 },
-    { t: 'block', x: 3306, w: 24, h: 64 },
+    { t: 'warn', x: 5205 },
+    { t: 'block', x: 5293, w: 56, h: 32 },
+    { t: 'block', x: 5357, w: 24, h: 64 },
+    { t: 'ceil', x: 5836, w: 6, y: 63 },
+    { t: 'spear', x: 5836, h: 53, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 6297, n: 19 },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 3924 },
-    { t: 'block', x: 4012, w: 56, h: 32 },
-    { t: 'block', x: 4076, w: 24, h: 64 },
-    { t: 'drop', x: 4694, y: 108, triggerX: 4394, falls: true, tell: true },
+    { t: 'warn', x: 6904 },
+    { t: 'block', x: 6992, w: 56, h: 32 },
+    { t: 'block', x: 7056, w: 24, h: 64 },
+    { t: 'ceil', x: 7535, w: 6, y: 63 },
+    { t: 'spear', x: 7535, h: 53, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 7996, n: 19 },
+    { t: 'drop', x: 8603, y: 100, triggerX: -1, falls: false },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 5304 },
-    { t: 'block', x: 5392, w: 56, h: 32 },
-    { t: 'block', x: 5456, w: 24, h: 64 },
-    { t: 'drop', x: 6074, y: 100, triggerX: -1, falls: false },
+    { t: 'warn', x: 9074 },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 6684 },
-    { t: 'block', x: 6772, w: 56, h: 32 },
-    { t: 'block', x: 6836, w: 24, h: 64 },
-    // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 7454 },
-    { t: 'block', x: 7542, w: 56, h: 32 },
-    { t: 'block', x: 7606, w: 24, h: 64 },
-    { t: 'drop', x: 8224, y: 108, triggerX: 7824, falls: true, tell: true },
-    // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 8834 },
-    { t: 'block', x: 8922, w: 56, h: 32 },
-    { t: 'block', x: 8986, w: 24, h: 64 },
-    // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 9604 },
-    { t: 'block', x: 9692, w: 56, h: 32 },
-    { t: 'block', x: 9756, w: 24, h: 64 },
-    // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 10374 },
-    { t: 'block', x: 10462, w: 56, h: 32 },
-    { t: 'block', x: 10526, w: 24, h: 64 },
-    { t: 'spike', x: 11144, n: 19 },
+    { t: 'warn', x: 9537 },
+    { t: 'block', x: 9625, w: 56, h: 32 },
+    { t: 'block', x: 9689, w: 24, h: 64 },
+    { t: 'ceil', x: 10168, w: 6, y: 63 },
+    { t: 'spear', x: 10168, h: 53, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 10424, n: 19 },
     // クライマックス帯（到達率 85〜95%）— D(t) のピークはここに置く
-    { t: 'spike', x: 11652, n: 19 },
-    { t: 'spike', x: 12160, n: 19 },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 12668 },
-    { t: 'fly', x: 13032, alt: 'LOW', vx: 3, amp: 0 },
-    { t: 'block', x: 13400, w: 24, h: 32 },
+    { t: 'warn', x: 10826 },
+    { t: 'block', x: 10914, w: 56, h: 32 },
+    { t: 'block', x: 10978, w: 24, h: 64 },
+    { t: 'ceil', x: 11252, w: 6, y: 63 },
+    { t: 'spear', x: 11252, h: 53, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 11508, n: 19 },
+    { t: 'drop', x: 11910, y: 108, triggerX: 11510, falls: true, tell: true },
+    { t: 'block', x: 12176, w: 24, h: 32 },
   ],
   // σ の実測用（§16-7）。推奨ルート上の各タップの生存窓 [最初, 最後]
   tapWindows: [
-    [28, 63], [309, 316], [344, 350], [471, 478], [506, 512], [634, 640], [669, 674], [796, 802],
-    [831, 836], [940, 970], [1086, 1093], [1121, 1127], [1377, 1383], [1412, 1417], [1539, 1545], [1574, 1579],
-    [1684, 1714], [1829, 1836], [1864, 1870], [1991, 1998], [2026, 2032], [2154, 2160], [2189, 2194], [2325, 2331],
-    [2432, 2437], [2539, 2544], [2672, 2708], [2772, 2799],
+    [28, 63], [251, 257], [286, 291], [378, 383], [490, 496], [608, 615], [643, 649], [736, 741],
+    [847, 853], [949, 979], [1065, 1072], [1100, 1106], [1193, 1198], [1304, 1310], [1423, 1430], [1458, 1464],
+    [1550, 1556], [1662, 1668], [1977, 1984], [2012, 2018], [2105, 2110], [2173, 2179], [2249, 2255], [2284, 2289],
+    [2333, 2338], [2401, 2407], [2460, 2490], [2514, 2542],
   ],
 }
 
 // ---------------------------------------------------------------------------
-// S9 WINGBEAT — 速度 5 px/f / 54秒 / 16,313px
-// 新要素: `fly` 上下動（G6）＋ `lift` / `spring`
-// 実測: 生存窓 7f（最悪 7f）/ 連鎖 1 / 誤帰属 0 /
-//   狭窓密度 0.478 / 抑制率 0.000 / 複合度 0.000 /
-//   D(t) 12.00 @92.4% / タップ 32本 = 0.59/秒 / クリア 3252f
-//   **E[D_skill] = 57.3（目標 80）** [σ=30: 3.0 / σ=40: 57.3 / σ=50: 1407.2] / D_knowledge = 0
+// S9 WINGBEAT — 速度 5 px/f / 49秒 / 14,611px
+// 新要素: `fly` 上下動（G6）＋ `spring`
+// 実測: 生存窓 6f（最悪 1f）/ 連鎖 2 / 誤帰属 0 /
+//   狭窓密度 0.493 / 抑制率 0.171 / 複合度 0.000 /
+//   D(t) 19.00 @86.1% / タップ 29本 = 0.60/秒 / クリア 2911f
+//   狭窓の出所 24本: WALL 12本 / GATE 6本 / spike 6本
+//   **E[D_skill] = 80.5（目標 80）** [σ=30: 4.2 / σ=40: 80.5 / σ=50: 1834.9] / D_knowledge = 0
 // ---------------------------------------------------------------------------
 const STAGE_9: StageDef = {
   id: 9,
   name: 'WINGBEAT',
   speedPxPerFrame: 5,
-  lengthPx: 16313,
+  lengthPx: 14611,
   safeRunwayPx: 240,
   groundY: 148,
   objects: [
     { t: 'block', x: 407, w: 24, h: 16 },
-    { t: 'fly', x: 827, alt: 'LOW', vx: 2, amp: 12, period: 60, phase: 0 },
-    { t: 'spike', x: 1235, n: 20 },
-    { t: 'spike', x: 1791, n: 20 },
-    { t: 'spike', x: 2347, n: 20 },
-    { t: 'spike', x: 2903, n: 20 },
-    { t: 'spike', x: 3459, n: 20 },
-    { t: 'spike', x: 4015, n: 20 },
-    { t: 'spike', x: 4571, n: 20 },
-    { t: 'fly', x: 5127, alt: 'LOW', vx: 2, amp: 16, period: 60, phase: 0 },
-    { t: 'spike', x: 5535, n: 20 },
-    { t: 'spike', x: 6091, n: 20 },
-    { t: 'fly', x: 6647, alt: 'LOW', vx: 2, amp: 12, period: 60, phase: 0 },
-    { t: 'spike', x: 7055, n: 20 },
-    { t: 'spike', x: 7611, n: 20 },
-    { t: 'spike', x: 8167, n: 20 },
-    { t: 'spike', x: 8723, n: 20 },
-    { t: 'spring', x: 9279 },
-    { t: 'spike', x: 9687, n: 20 },
-    { t: 'spike', x: 10243, n: 20 },
-    { t: 'spike', x: 10799, n: 20 },
-    { t: 'spike', x: 11355, n: 20 },
-    { t: 'spike', x: 11911, n: 20 },
-    { t: 'spike', x: 12467, n: 20 },
-    { t: 'spike', x: 13023, n: 20 },
-    { t: 'spike', x: 13381, n: 20 },
-    { t: 'spike', x: 13739, n: 20 },
-    // クライマックス帯（到達率 85〜95%）— D(t) のピークはここに置く
-    { t: 'spike', x: 14097, n: 20 },
-    { t: 'spike', x: 14455, n: 20 },
-    { t: 'spike', x: 14813, n: 20 },
-    { t: 'spike', x: 15171, n: 20 },
+    { t: 'fly', x: 973, alt: 'LOW', vx: 2, amp: 12, period: 60, phase: 0 },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 15529 },
-    { t: 'fly', x: 15735, alt: 'LOW', vx: 2, amp: 8, period: 60, phase: 0 },
-    { t: 'block', x: 15945, w: 24, h: 32 },
+    { t: 'warn', x: 1527 },
+    { t: 'block', x: 1615, w: 56, h: 32 },
+    { t: 'block', x: 1679, w: 24, h: 64 },
+    { t: 'ceil', x: 2245, w: 6, y: 63 },
+    { t: 'spear', x: 2245, h: 53, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 2793, n: 20 },
+    // 予告マーカー（§7-3 ルールB）
+    { t: 'warn', x: 3495 },
+    { t: 'block', x: 3583, w: 56, h: 32 },
+    { t: 'block', x: 3647, w: 24, h: 64 },
+    { t: 'ceil', x: 4213, w: 6, y: 63 },
+    { t: 'spear', x: 4213, h: 53, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 4761, n: 20 },
+    { t: 'fly', x: 5463, alt: 'LOW', vx: 2, amp: 16, period: 60, phase: 0 },
+    // 予告マーカー（§7-3 ルールB）
+    { t: 'warn', x: 6017 },
+    { t: 'block', x: 6105, w: 56, h: 32 },
+    { t: 'block', x: 6169, w: 24, h: 64 },
+    { t: 'ceil', x: 6735, w: 6, y: 63 },
+    { t: 'spear', x: 6735, h: 53, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 7283, n: 20 },
+    // 予告マーカー（§7-3 ルールB）
+    { t: 'warn', x: 7985 },
+    { t: 'block', x: 8073, w: 56, h: 32 },
+    { t: 'block', x: 8137, w: 24, h: 64 },
+    { t: 'ceil', x: 8703, w: 6, y: 63 },
+    { t: 'spear', x: 8703, h: 53, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 9251, n: 20 },
+    { t: 'fly', x: 9953, alt: 'LOW', vx: 2, amp: 12, period: 60, phase: 0 },
+    // 予告マーカー（§7-3 ルールB）
+    { t: 'warn', x: 10507 },
+    // 予告マーカー（§7-3 ルールB）
+    { t: 'warn', x: 10894 },
+    { t: 'block', x: 10982, w: 56, h: 32 },
+    { t: 'block', x: 11046, w: 24, h: 64 },
+    { t: 'ceil', x: 11449, w: 6, y: 63 },
+    { t: 'spear', x: 11449, h: 53, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 11834, n: 20 },
+    // 予告マーカー（§7-3 ルールB）
+    { t: 'warn', x: 12373 },
+    // クライマックス帯（到達率 85〜95%）— D(t) のピークはここに置く
+    { t: 'block', x: 12461, w: 56, h: 32 },
+    { t: 'block', x: 12525, w: 24, h: 64 },
+    { t: 'ceil', x: 12928, w: 6, y: 63 },
+    { t: 'spear', x: 12928, h: 53, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 13313, n: 20 },
+    { t: 'spring', x: 13852 },
+    { t: 'block', x: 14243, w: 24, h: 32 },
   ],
   // σ の実測用（§16-7）。推奨ルート上の各タップの生存窓 [最初, 最後]
   tapWindows: [
-    [29, 64], [103, 134], [226, 232], [337, 343], [449, 455], [560, 566], [671, 677], [782, 788],
-    [893, 899], [963, 993], [1086, 1092], [1197, 1203], [1266, 1298], [1390, 1396], [1501, 1507], [1613, 1619],
-    [1724, 1730], [1917, 1923], [2028, 2034], [2139, 2145], [2250, 2256], [2361, 2367], [2473, 2479], [2584, 2590],
-    [2655, 2661], [2727, 2733], [2799, 2805], [2870, 2876], [2942, 2948], [3013, 3019], [3082, 3118], [3141, 3168],
+    [29, 64], [131, 163], [275, 281], [310, 315], [414, 419], [538, 544], [668, 674], [703, 708],
+    [807, 813], [931, 937], [1029, 1061], [1173, 1179], [1208, 1213], [1312, 1317], [1436, 1442], [1566, 1572],
+    [1601, 1606], [1705, 1711], [1829, 1835], [1927, 1959], [2148, 2154], [2183, 2188], [2254, 2260], [2346, 2352],
+    [2444, 2450], [2479, 2484], [2550, 2556], [2642, 2648], [2800, 2828],
   ],
 }
 
 // ---------------------------------------------------------------------------
-// S10 TEST II — 速度 5.25 px/f / 52秒 / 16,478px
+// S10 TEST II — 速度 5.25 px/f / 53秒 / 16,740px
 // 新要素: `spear` トラップ（G4 本体）＋ 章末試験＝全要素の複合
 // 実測: 生存窓 6f（最悪 1f）/ 連鎖 2 / 誤帰属 0 /
-//   狭窓密度 0.459 / 抑制率 0.061 / 複合度 0.021 /
-//   D(t) 13.00 @85.2% / タップ 30本 = 0.57/秒 / クリア 3128f
-//   **E[D_skill] = 104.4（目標 110）** [σ=30: 4.9 / σ=40: 104.4 / σ=50: 2851.3] / D_knowledge = 0
+//   狭窓密度 0.546 / 抑制率 0.178 / 複合度 0.000 /
+//   D(t) 18.25 @87.9% / タップ 37本 = 0.70/秒 / クリア 3178f
+//   狭窓の出所 29本: spear 3本 / WALL 14本 / GATE 5本 / spike 7本
+//   **E[D_skill] = 109.6（目標 110）** [σ=30: 4.1 / σ=40: 109.6 / σ=50: 4614.3] / D_knowledge = 0
 // ---------------------------------------------------------------------------
 const STAGE_10: StageDef = {
   id: 10,
   name: 'TEST II',
   speedPxPerFrame: 5.25,
-  lengthPx: 16478,
+  lengthPx: 16740,
   safeRunwayPx: 252,
   groundY: 148,
   objects: [
     { t: 'block', x: 427, w: 24, h: 16 },
-    { t: 'spear', x: 1173, h: 52, triggerX: 1029, rise: 8 },
+    { t: 'spear', x: 889, h: 52, triggerX: 745, rise: 8 },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 1901 },
-    { t: 'block', x: 1989, w: 60, h: 32 },
-    { t: 'block', x: 2057, w: 24, h: 64 },
+    { t: 'warn', x: 1333 },
+    { t: 'block', x: 1421, w: 60, h: 32 },
+    { t: 'block', x: 1489, w: 24, h: 64 },
+    { t: 'ceil', x: 1951, w: 6, y: 63 },
+    { t: 'spear', x: 1951, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 2395, n: 21 },
+    { t: 'spear', x: 3001, h: 52, triggerX: 2857, rise: 8 },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 2803 },
-    { t: 'block', x: 2891, w: 60, h: 32 },
-    { t: 'block', x: 2959, w: 24, h: 64 },
-    { t: 'spear', x: 3705, h: 52, triggerX: 3561, rise: 8 },
+    { t: 'warn', x: 3445 },
+    { t: 'block', x: 3533, w: 60, h: 32 },
+    { t: 'block', x: 3601, w: 24, h: 64 },
+    { t: 'ceil', x: 4063, w: 6, y: 63 },
+    { t: 'spear', x: 4063, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 4507, n: 21 },
+    { t: 'spear', x: 5113, h: 52, triggerX: 4969, rise: 8 },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 4433 },
-    { t: 'block', x: 4521, w: 60, h: 32 },
-    { t: 'block', x: 4589, w: 24, h: 64 },
+    { t: 'warn', x: 5557 },
+    { t: 'block', x: 5645, w: 60, h: 32 },
+    { t: 'block', x: 5713, w: 24, h: 64 },
+    { t: 'ceil', x: 6175, w: 6, y: 63 },
+    { t: 'spear', x: 6175, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 6619, n: 21 },
+    { t: 'spear', x: 7225, h: 52, triggerX: 7081, rise: 8 },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 5335 },
-    { t: 'block', x: 5423, w: 60, h: 32 },
-    { t: 'block', x: 5491, w: 24, h: 64 },
-    { t: 'spear', x: 6237, h: 52, triggerX: 6093, rise: 8 },
+    { t: 'warn', x: 7669 },
+    { t: 'block', x: 7757, w: 60, h: 32 },
+    { t: 'block', x: 7825, w: 24, h: 64 },
+    { t: 'ceil', x: 8287, w: 6, y: 63 },
+    { t: 'spear', x: 8287, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 8731, n: 21 },
+    { t: 'fly', x: 9337, alt: 'LOW', vx: 3, amp: 0 },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 6965 },
-    { t: 'block', x: 7053, w: 60, h: 32 },
-    { t: 'block', x: 7121, w: 24, h: 64 },
+    { t: 'warn', x: 9787 },
+    { t: 'block', x: 9875, w: 60, h: 32 },
+    { t: 'block', x: 9943, w: 24, h: 64 },
+    { t: 'ceil', x: 10405, w: 6, y: 63 },
+    { t: 'spear', x: 10405, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 10849, n: 21 },
+    { t: 'drop', x: 11455, y: 108, triggerX: -1, falls: false },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 7867 },
-    { t: 'block', x: 7955, w: 60, h: 32 },
-    { t: 'block', x: 8023, w: 24, h: 64 },
-    { t: 'spear', x: 8769, h: 52, triggerX: 8625, rise: 8 },
+    { t: 'warn', x: 11909 },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 9497 },
-    { t: 'block', x: 9585, w: 60, h: 32 },
-    { t: 'block', x: 9653, w: 24, h: 64 },
-    // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 10399 },
-    { t: 'block', x: 10487, w: 60, h: 32 },
-    { t: 'block', x: 10555, w: 24, h: 64 },
-    // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 11301 },
-    { t: 'block', x: 11389, w: 60, h: 32 },
-    { t: 'block', x: 11457, w: 24, h: 64 },
-    { t: 'fly', x: 12203, alt: 'LOW', vx: 3, amp: 0 },
-    // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 12937 },
-    { t: 'block', x: 13025, w: 60, h: 32 },
-    { t: 'block', x: 13093, w: 24, h: 64 },
-    // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 13839 },
-    { t: 'block', x: 13927, w: 60, h: 32 },
-    { t: 'block', x: 13995, w: 24, h: 64 },
+    { t: 'warn', x: 12355 },
+    { t: 'block', x: 12443, w: 60, h: 32 },
+    { t: 'block', x: 12511, w: 24, h: 64 },
+    { t: 'ceil', x: 12973, w: 6, y: 63 },
+    { t: 'spear', x: 12973, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 13417, n: 21 },
+    { t: 'swing', x: 14023, y: 132, amp: 24, period: 90, phase: 0 },
     // クライマックス帯（到達率 85〜95%）— D(t) のピークはここに置く
-    { t: 'drop', x: 14741, y: 108, triggerX: -1, falls: false },
-    { t: 'swing', x: 15082, y: 132, amp: 24, period: 90, phase: 0 },
-    { t: 'fly', x: 15447, alt: 'LOW', vx: 2, amp: 12, period: 60, phase: 0 },
     // 予告マーカー（§7-3 ルールB）
-    { t: 'warn', x: 15784 },
-    { t: 'ceil', x: 16117, w: 48, y: 96 },
-    { t: 'block', x: 16490, w: 24, h: 32 },
+    { t: 'warn', x: 14501 },
+    { t: 'block', x: 14589, w: 60, h: 32 },
+    { t: 'block', x: 14657, w: 24, h: 64 },
+    { t: 'ceil', x: 15119, w: 6, y: 63 },
+    { t: 'spear', x: 15119, h: 52, triggerX: -1, rise: 8 },
+    { t: 'spike', x: 15475, n: 21 },
+    { t: 'fly', x: 15993, alt: 'LOW', vx: 2, amp: 12, period: 60, phase: 0 },
+    { t: 'block', x: 16355, w: 24, h: 32 },
   ],
   // σ の実測用（§16-7）。推奨ルート上の各タップの生存窓 [最初, 最後]
   tapWindows: [
-    [30, 65], [188, 195], [331, 337], [366, 371], [503, 509], [538, 543], [670, 677], [814, 820],
-    [849, 854], [985, 991], [1020, 1025], [1152, 1160], [1296, 1302], [1331, 1336], [1468, 1474], [1503, 1508],
-    [1634, 1642], [1778, 1784], [1813, 1818], [1950, 1956], [1985, 1990], [2122, 2128], [2157, 2162], [2257, 2293],
-    [2433, 2439], [2468, 2473], [2605, 2611], [2640, 2645], [2823, 2858], [2881, 2913],
+    [30, 65], [134, 141], [223, 229], [258, 263], [336, 343], [436, 442], [536, 543], [625, 631],
+    [660, 665], [738, 745], [838, 844], [938, 945], [1028, 1034], [1063, 1068], [1140, 1148], [1241, 1247],
+    [1340, 1348], [1430, 1436], [1465, 1470], [1543, 1550], [1643, 1649], [1711, 1747], [1833, 1839], [1868, 1873],
+    [1946, 1953], [2046, 2052], [2322, 2329], [2357, 2363], [2435, 2443], [2535, 2541], [2623, 2658], [2731, 2737],
+    [2766, 2771], [2844, 2851], [2927, 2933], [2985, 3017], [3068, 3095],
   ],
 }
 
