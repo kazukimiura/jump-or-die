@@ -83,8 +83,9 @@ import {
   MAX_CONCURRENT_CRUMBLE,
   MAX_OVERLAPPING_SURFACES,
   SPIKE_MAX_WIDTH_RATIO,
-  TAPS_PER_SEC_HI,
-  TAPS_PER_SEC_LO,
+  CHAPTER_TAPS_PER_SEC_BAND,
+  CHAPTER_SUPPRESS_MAX,
+  MAX_OBJECTS_PER_SECOND,
   tightWindowThreshold,
   WALL_MIN_H,
   WALL_STEP_HEADROOM,
@@ -1342,6 +1343,19 @@ export function tapsPerSecondCeiling(maxChain: number): number {
 }
 
 /**
+ * 平均要求タップ/秒の**実効上限**（章ごと）。
+ *
+ * 理論最大（連鎖3 のときの 1.11 /秒）に `(1 - 章の抑制率上限)` を掛ける。
+ * 抑制オブジェクトは**時間を消費してタップを生まない**ので、
+ * 抑制率を上げる設計＝密度の上限を下げる設計になっている。
+ * I 1.00 / II 0.89 / III 0.83 / IV 0.78 / V 0.72 / VI 0.67。
+ */
+export function effectiveTapsPerSecondCeiling(chapter: number): number {
+  const c = Math.min(CHAPTER_SUPPRESS_MAX.length - 1, Math.max(0, chapter))
+  return tapsPerSecondCeiling(3) * (1 - CHAPTER_SUPPRESS_MAX[c])
+}
+
+/**
  * クライマックス帯（85〜95%）にある谷を列挙する。
  * 谷は後続の安全間隔を 1.9R 押し広げるため、そこが最も疎になり D(t) のピークが前へずれる。
  * **通っているステージには出さない。** 検査9（D(t) ピーク）が不合格のときにだけ、
@@ -1611,12 +1625,17 @@ export function staticChecks(stage: StageDef, budget: StageBudget): CheckIssue[]
   issues.push(...wallChecks(stage))
   issues.push(...catalogLimits(stage))
 
+  // 検査: 障害物 総数の**上限**（GDD §15-16）。設計値（単一値）は撤回された。
+  // 誤帰属0を満たす最小間隔クラス 1.12R から 60/(1.12x41.67)=1.286 個/秒。
+  // R に速度が含まれるので**速度に依存しない**。下限は持たない。
   const counted = stage.objects.filter((o) => o.t !== 'warn').length
-  if (counted !== budget.objectCount) {
+  const stageSeconds = stage.lengthPx / (stage.speedPxPerFrame * 60)
+  const maxCount = Math.floor(stageSeconds * MAX_OBJECTS_PER_SECOND)
+  if (counted > maxCount) {
     issues.push({
-      level: 'WARN',
+      level: 'FAIL',
       code: 'COUNT',
-      message: `障害物 総数 ${counted} が GDD §6-3 の設計値 ${budget.objectCount} と異なります`,
+      message: `障害物 総数 ${counted} が上限 ${maxCount}（長さ ${stageSeconds.toFixed(1)}s x ${MAX_OBJECTS_PER_SECOND.toFixed(2)} 個/秒）を超えます。誤帰属0の最小間隔では物理的に置けない本数`,
     })
   }
 
@@ -1768,27 +1787,32 @@ export function verifyStage(stage: StageDef, budget: StageBudget): VerifyResult 
     })
   }
 
-  // 検査14: 平均要求タップ/秒（GDD §6-3 の列）。**間延びの検出器**
-  const ceiling = tapsPerSecondCeiling(budget.maxChain)
-  const tpsLo = budget.tapsPerSecond * TAPS_PER_SEC_LO
-  const tpsHi = budget.tapsPerSecond * TAPS_PER_SEC_HI
+  // 検査14: 平均要求タップ/秒 — **章ごとの帯**（GDD §15-16）
+  //
+  // 旧「§6-3 の単一設計値 x 比率」は撤回された。S8 0.90 / S9 1.00 / S10 1.10 は
+  // 実効上限を超えており、いかなる配置でも到達できない値だったため。
+  // 実効上限 = 理論最大 x (1 - 抑制率上限)。抑制オブジェクトは時間を消費して
+  // タップを生まないので、**章が進むほど密度の上限は下がる**。
+  //
+  // 下限は S1 を除外する。S1 は導入で、連鎖上限 1・生存窓 36f の意図的に薄い設計。
+  // 検査3（生存窓 上限＝緩すぎの検出）と検査9（クライマックス）で既に S1 を
+  // 除外しているのと同じ理由で、**「緩すぎ」側の検出器は S1 に当てない**。
+  // 実測 0.40（章I の帯は 0.55〜0.80）。上限側は S1 にも当てる。
+  const [tpsLo, tpsHi] = CHAPTER_TAPS_PER_SEC_BAND[chapter]
+  const effCeiling = effectiveTapsPerSecondCeiling(chapter)
   if (solve.tapsPerSecond > tpsHi) {
     issues.push({
       level: 'FAIL',
       code: 'TAPS_PER_SEC',
-      message: `平均要求タップ/秒 ${solve.tapsPerSecond.toFixed(2)} が上限 ${tpsHi.toFixed(2)}（設計値 ${budget.tapsPerSecond} x ${TAPS_PER_SEC_HI}）を超えます`,
+      message: `平均要求タップ/秒 ${solve.tapsPerSecond.toFixed(2)} が章${chapter + 1}の帯 ${tpsLo}〜${tpsHi} の上を超えます（実効上限 ${effCeiling.toFixed(2)}）`,
     })
-  } else if (solve.tapsPerSecond < tpsLo) {
+  } else if (stage.id !== 1 && solve.tapsPerSecond < tpsLo) {
     issues.push({
-      // 【暫定 WARN】本来は不合格条件だが、§6-3 の設計値のうち S8〜S10 は
-      // 構造上限（連鎖上限＋息継ぎから決まる理論最大）を超えており、達成できない。
-      // §6-3 の改訂後に 'FAIL' へ上げる。詳細は下の tapsPerSecondCeiling を参照。
-      level: 'WARN',
+      level: 'FAIL',
       code: 'TAPS_PER_SEC',
       message:
-        `平均要求タップ/秒 ${solve.tapsPerSecond.toFixed(2)} が下限 ${tpsLo.toFixed(2)}（設計値 ${budget.tapsPerSecond}）を下回ります。` +
-        `連鎖上限 ${budget.maxChain} での構造上限は ${ceiling.toFixed(2)}` +
-        (budget.tapsPerSecond > ceiling ? `。**設計値 ${budget.tapsPerSecond} がその構造上限を超えており、いかなる配置でも到達できない**` : ''),
+        `平均要求タップ/秒 ${solve.tapsPerSecond.toFixed(2)} が章${chapter + 1}の帯 ${tpsLo}〜${tpsHi} の下を割ります（実効上限 ${effCeiling.toFixed(2)}）。` +
+        `「たまに難所がある、間延びしたステージ」になっている`,
     })
   }
 
